@@ -1,35 +1,25 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+export function middleware(request: NextRequest) {
+  const isLoggedIn = request.cookies.get('isLoggedIn')
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // 로그인된 사용자가 루트 경로('/')에 접근하는 경우
+  if (request.nextUrl.pathname === '/' && isLoggedIn) {
+    return NextResponse.redirect(new URL('/home', request.url))
+  }
 
-  // 로그인이 필요한 페이지들
-  const protectedRoutes = ['/dashboard']
+  // /home 경로에 대한 기존 로직
+  if (request.nextUrl.pathname.startsWith('/home')) {
+    if (!isLoggedIn) {
+      return NextResponse.redirect(new URL('/', request.url))
+    }
+  }
   
-  // 현재 접근하려는 경로
-  const path = req.nextUrl.pathname
-
-  // 로그인이 필요한 페이지인데 로그인이 되어있지 않은 경우
-  if (protectedRoutes.includes(path) && !session) {
-    return NextResponse.redirect(new URL('/', req.url))
-  }
-
-  // 이미 로그인된 상태에서 시작 페이지로 접근하는 경우
-  if (path === '/' && session) {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
-  }
-
-  return res
+  return NextResponse.next()
 }
 
-// 미들웨어가 실행될 경로 설정
 export const config = {
-  matcher: ['/', '/dashboard', '/dashboard/:path*']
+  // 루트 경로도 미들웨어가 처리하도록 매처 수정
+  matcher: ['/', '/home/:path*']
 }

@@ -31,7 +31,7 @@ export default function MealSection() {
 
   if (loading) {
     return (
-      <div className="w-full max-w-4xl mx-auto mt-12 px-4">
+      <div className="w-full max-w-7xl mx-auto mt-12 px-6">
         <div className="animate-pulse bg-gray-200 rounded-lg h-64"></div>
       </div>
     )
@@ -42,7 +42,7 @@ export default function MealSection() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.6 }}
-      className="w-full max-w-4xl mx-auto mt-12 px-4"
+      className="w-full max-w-7xl mx-auto mt-12 px-6"
     >
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -53,7 +53,7 @@ export default function MealSection() {
             <motion.div
               key={mealType}
               whileHover={{ scale: 1.02 }}
-              className="bg-white rounded-xl shadow-lg p-6"
+              className="bg-white rounded-xl shadow-lg p-6 min-h-[200px]"
             >
               <h3 className="text-lg font-semibold mb-4 text-gray-700">
                 {mealType}

@@ -4,7 +4,7 @@ import Link from "next/link";
 const PreHeader = () => {
   return (
     <header className="w-full border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div className="max-w-[1088px] mx-auto h-16 flex items-center justify-between">
         <div className="flex items-center">
           <Link href="/home" className="flex items-center gap-2">
             <Image
@@ -26,7 +26,7 @@ const PreHeader = () => {
         <div className="flex items-center gap-4">
           <Link 
             href="/contact" 
-            className="text-gray-600 hover:text-gray-900"
+            className="text-gray-600 hover:text-gray-900 font-bold"
           >
             문의하기
           </Link>

@@ -19,16 +19,6 @@ interface FormErrors {
   signup?: string;
 }
 
-// Profile 인터페이스 정의
-interface Profile {
-  id: string;
-  username: string;
-  email: string;
-  name?: string;
-  student_id?: string;
-  created_at?: string;
-}
-
 export default function Home() {
   const [showLoginPopup, setShowLoginPopup] = useState(false)
   const [isLoginForm, setIsLoginForm] = useState(true)
@@ -53,26 +43,21 @@ export default function Home() {
   const [isPasswordTouched, setIsPasswordTouched] = useState(false)
   const [isConfirmPasswordTouched, setIsConfirmPasswordTouched] = useState(false)
   const [signupSuccess, setSignupSuccess] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true);
 
   const supabase = createClientComponentClient()
 
   useEffect(() => {
-    // 로그인 상태 체크
-    const isLoggedIn = sessionStorage.getItem('isLoggedIn')
-    const userDataStr = sessionStorage.getItem('userData')
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 200);
 
-    if (isLoggedIn && userDataStr) {
-      // 이미 로그인된 경우 /home으로 리다이렉트
-      document.location.href = '/home'
-      return
-    }
-
-    setIsLoading(false)
-  }, [])
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    setLoading(true)
     
     if (!username || !password) {
       setFormErrors(prev => ({
@@ -83,8 +68,6 @@ export default function Home() {
     }
 
     try {
-      setLoading(true)
-      
       const { data: allowedUser, error } = await supabase
         .from('allowed_users')
         .select('*')
@@ -100,7 +83,7 @@ export default function Home() {
         return
       }
 
-      // 로그인 성공 시 세션스토리지에 저장
+      document.cookie = 'isLoggedIn=true; path=/'
       sessionStorage.setItem('isLoggedIn', 'true')
       sessionStorage.setItem('userData', JSON.stringify({
         name: allowedUser.name,
@@ -114,8 +97,7 @@ export default function Home() {
       })
       console.log('==================')
 
-      // home 페이지로 이동
-      document.location.href = '/home'
+      router.push('/home')
       
     } catch (error: any) {
       console.error('로그인 에러:', error)
@@ -490,7 +472,7 @@ export default function Home() {
                 회원가입이 완료되었습니다!
               </h3>
               <p className="text-gray-600">
-                이제 로그인하여 서비스를 이용하실 수 있습니다.
+                Bunker 관리자의 승인 후 이용 가능합니다.
               </p>
             </div>
             <button
@@ -551,24 +533,16 @@ export default function Home() {
       <button 
         type="submit" 
         disabled={loading}
-        className="w-full bg-blue-600 text-white p-3 rounded-xl font-semibold hover:bg-blue-700 disabled:bg-blue-300 transition-all duration-200 transform hover:scale-[1.02]"
+        className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform hover:scale-[1.02] ${
+          loading 
+            ? 'bg-blue-300 text-white cursor-not-allowed' 
+            : 'bg-blue-600 text-white hover:bg-blue-700'
+        }`}
       >
-        {loading ? '로그인 중...' : '로그인'}
+        로그인
       </button>
     </form>
   )
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <PreHeader />
-        <div className="flex-1 p-8 flex items-center justify-center">
-          <div className="animate-pulse text-gray-500">로딩중...</div>
-        </div>
-        <Footer />
-      </div>
-    )
-  }
 
   return (
     <>
@@ -582,7 +556,7 @@ export default function Home() {
             
             {/* Content */}
             <div className="relative h-full flex items-center max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-col items-start w-full mt-10">
+              <div className="flex flex-col items-start w-full ">
                 {/* Text Content and Button in one group */}
                 <div className="flex items-center gap-8">
                   <div className="text-left">
@@ -614,14 +588,13 @@ export default function Home() {
           </div>
 
           {/* Meal Section */}
-          <section className="bg-white py-16">
+          <section className="bg-white py-48">
             <div className="max-w-6xl mx-auto px-4">
-              <h2 className="text-3xl font-bold text-center mb-10">오늘의 급식</h2>
               <MealSection />
             </div>
           </section>
+          <Footer />
         </main>
-        <Footer />
       </div>
 
       <AnimatePresence>
