@@ -533,10 +533,10 @@ export default function Home() {
       <button 
         type="submit" 
         disabled={loading}
-        className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform hover:scale-[1.02] ${
+        className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform ${
           loading 
-            ? 'bg-blue-300 text-white cursor-not-allowed' 
-            : 'bg-blue-600 text-white hover:bg-blue-700'
+            ? 'bg-gray-400 text-white cursor-not-allowed hover:bg-gray-400'
+            : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-[1.02]'
         }`}
       >
         로그인
@@ -566,7 +566,7 @@ export default function Home() {
                       <span className="font-extrabold">이디저디</span>
                     </h1>
                     <p className="text-base text-gray-300">
-                      새로운 소개 페이지를 지금 바로 만나보세요
+                      새로운 이디저디를 지금 바로 만나보세요
                     </p>
                   </div>
 
@@ -603,16 +603,17 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0 }}
             className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 backdrop-blur-sm z-50"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowLoginPopup(false)
             }}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ type: "spring", duration: 0.4 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0 }}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
@@ -631,7 +632,7 @@ export default function Home() {
                 </h2>
                 <p className="text-center text-gray-600 mb-8">
                   {isLoginForm 
-                    ? '아이디와 비밀번호를 입력해주세요' 
+                    ? '' 
                     : `${signupStep}/5 단계`}
                 </p>
                 

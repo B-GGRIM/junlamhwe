@@ -1,10 +1,12 @@
+'use client';
+
 import Image from "next/image";
 import Link from "next/link";
 
 export default function PreHeader() {
   return (
     <header className="w-full border-b border-gray-200">
-      <div className="max-w-[1088px] mx-auto h-16 flex items-center justify-between">
+      <div className="max-w-6xl mx-auto px-5 sm:px-7 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -16,7 +18,7 @@ export default function PreHeader() {
               quality={100}
               priority
             />
-            <h1 className="text-lg font-bold">이디저디</h1>
+            <h1 className="text-lg font-bold text-lg">이디저디</h1>
             <span className="px-2 py-1 text-xs bg-blue-500 text-white rounded-full">
               신규
             </span>
@@ -26,11 +28,14 @@ export default function PreHeader() {
         <div className="flex items-center gap-4">
           <Link 
             href="/contact" 
-            className="text-gray-600 hover:text-gray-900 font-bold"
+            className="text-gray-600 hover:text-gray-900 font-bold text-lg"
           >
             문의하기
           </Link>
-          <button className="p-2 hover:bg-gray-100 rounded-full">
+          <button 
+            className="p-2 hover:bg-gray-100 rounded-full"
+            onClick={() => alert('로그인 후 사용가능합니다')}
+          >
             <Image
               src="/search.png"
               alt="검색"
