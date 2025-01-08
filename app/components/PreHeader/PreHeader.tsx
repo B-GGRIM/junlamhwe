@@ -19,7 +19,7 @@ export default function PreHeader() {
               priority
             />
             <h1 className="text-lg font-bold text-lg">이디저디</h1>
-            <span className="px-2 py-1 text-xs bg-blue-500 text-white rounded-full">
+            <span className="px-2 py-1 text-xs bg-green-500 text-white rounded-full">
               신규
             </span>
           </Link>

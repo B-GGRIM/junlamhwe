@@ -3,30 +3,90 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { getMeals } from '@/lib/neis'
+import Neis from "@my-school.info/neis-api";
+
+// 타입 정의 추가
+interface MealInfo {
+  MMEAL_SC_NM: string;
+  DDISH_NM: string;
+}
+
+interface SchoolInfo {
+  ATPT_OFCDC_SC_CODE: string;
+  SD_SCHUL_CODE: string;
+}
 
 export default function MealSection() {
-  const [meals, setMeals] = useState<any[]>([])
+  const [meals, setMeals] = useState<MealInfo[]>([])
+  const [error, setError] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchMeals() {
       try {
-        const mealsData = await getMeals('')
-        setMeals(mealsData || [])
+        if (!process.env.NEXT_PUBLIC_NEIS_API_KEY) {
+          throw new Error('NEIS API 키가 설정되지 않았습니다.');
+        }
+
+        const neis = new Neis({
+          key: process.env.NEXT_PUBLIC_NEIS_API_KEY
+        });
+        
+        // 제주과학고등학교 정보 직접 지정
+        const schoolInfo = await neis.getSchoolInfo({ 
+          SCHUL_NM: "제주과학고등학교"
+        }).catch(() => null);
+        
+        if (!schoolInfo || !Array.isArray(schoolInfo) || schoolInfo.length === 0) {
+          throw new Error('학교 정보를 찾을 수 없습니다.');
+        }
+
+        // 오늘 날짜 형식 변환
+        const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        
+        // 급식 정보 조회
+        const mealInfo = await neis.getMealInfo({ 
+          ATPT_OFCDC_SC_CODE: schoolInfo[0].ATPT_OFCDC_SC_CODE,
+          SD_SCHUL_CODE: schoolInfo[0].SD_SCHUL_CODE,
+          MLSV_YMD: today
+        }).catch(() => null);
+          
+        if (!mealInfo) {
+          setMeals([]);
+          return;
+        }
+
+        if (Array.isArray(mealInfo)) {
+          setMeals(mealInfo);
+        } else {
+          setMeals([]);
+        }
       } catch (error) {
-        console.error('급식 정보 로딩 실패:', error)
+        console.error('급식 정보 로딩 실패:', error);
+        setError(error instanceof Error ? error.message : '급식 정보를 불러오는데 실패했습니다.');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
-    fetchMeals()
-  }, [])
+    
+    fetchMeals();
+  }, []);
 
   const formatMeal = (dishName: string) => {
     return dishName
       .replace(/<br\/>/g, '\n')
       .replace(/\([0-9.]+\)/g, '')
       .split('\n')
+  }
+
+  if (error) {
+    return (
+      <div className="w-full max-w-7xl mx-auto mt-12 px-6">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      </div>
+    );
   }
 
   if (loading) {
