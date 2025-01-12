@@ -308,7 +308,7 @@ export default function Home() {
             <button
               type="button"
               onClick={handleNextStep}
-              className="w-full bg-blue-600 text-white p-3 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 transform hover:scale-[1.02]"
+              className="w-full bg-[#3ECF8E] text-white p-3 rounded-xl font-semibold hover:bg-[#3ECF8E] transition-all duration-200 transform hover:scale-[1.02]"
             >
               다음으로
             </button>
@@ -344,7 +344,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="w-full bg-blue-600 text-white p-3 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 transform hover:scale-[1.02]"
+                className="w-full bg-[#3ECF8E] text-white p-3 rounded-xl font-semibold hover:bg-[#3ECF8E] transition-all duration-200 transform hover:scale-[1.02]"
               >
                 다음으로
               </button>
@@ -380,7 +380,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="w-full bg-blue-600 text-white p-3 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 transform hover:scale-[1.02]"
+                className="w-full bg-[#3ECF8E] text-white p-3 rounded-xl font-semibold hover:bg-[#3ECF8E] transition-all duration-200 transform hover:scale-[1.02]"
               >
                 다음으로
               </button>
@@ -434,10 +434,11 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loading || !isSignupButtonEnabled()}
-                className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform hover:scale-[1.02]
-                  ${isSignupButtonEnabled() 
-                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                    : 'bg-blue-300 text-white cursor-not-allowed'}`}
+                className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform border-2 ${
+                  loading 
+                    ? 'bg-gray-400 text-white cursor-not-allowed hover:bg-gray-400'
+                    : 'bg-[#006239] text-white border-[#128453] hover:bg-[#006239] hover:scale-[1.02]'
+                }`}
               >
                 {loading ? '가입 중...' : '회원가입'}
               </button>
@@ -481,7 +482,7 @@ export default function Home() {
                 setIsLoginForm(true)
                 resetForm()
               }}
-              className="w-full bg-blue-600 text-white p-3 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 transform hover:scale-[1.02]"
+              className="w-full bg-[#3ECF8E] text-white p-3 rounded-xl font-semibold hover:bg-[#3ECF8E] transition-all duration-200 transform hover:scale-[1.02]"
             >
               로그인하기
             </button>
@@ -533,10 +534,10 @@ export default function Home() {
       <button 
         type="submit" 
         disabled={loading}
-        className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform ${
+        className={`w-full p-3 rounded-xl font-semibold transition-all duration-200 transform border-2 ${
           loading 
             ? 'bg-gray-400 text-white cursor-not-allowed hover:bg-gray-400'
-            : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-[1.02]'
+            : 'bg-[#00c573] text-white hover:bg-[#006239] hover:scale-[1.00]'
         }`}
       >
         로그인
@@ -546,11 +547,20 @@ export default function Home() {
 
   return (
     <>
-      <div className={`min-h-screen flex flex-col relative ${showLoginPopup ? 'blur-sm' : ''}`}>
+      <div className={`min-h-screen flex flex-col relative ${showLoginPopup ? 'brightness-75' : ''}`}>
         <PreHeader />
         <main className="flex-1">
           {/* Hero Section */}
-          <div className="relative w-full h-[70vh] bg-gradient-to-br from-gray-950 via-gray-900 to-blue-900 overflow-hidden">
+          <div className="relative w-full h-[75vh] bg-cover bg-center" style={{ backgroundImage: 'url("/background01.jpg")' }}>
+            {/* Noise overlay */}
+            <div 
+              className="absolute inset-0 opacity-[0.25] mix-blend-soft-light"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+                backgroundSize: '200px 200px'
+              }}
+            ></div>
+
             {/* Overlay for depth */}
             <div className="absolute inset-0 bg-gradient-to-br from-transparent via-black/10 to-black/20"></div>
             
@@ -581,16 +591,28 @@ export default function Home() {
 
               {/* Pagination Dots */}
               <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex space-x-2">
-                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                <div className="w-2 h-2 rounded-full bg-gray-500/50"></div>
+
               </div>
             </div>
           </div>
 
           {/* Meal Section */}
-          <section className="bg-white py-48">
+          <section className="bg-white py-28">
             <div className="max-w-6xl mx-auto px-4">
-              <MealSection />
+              <div className="flex items-center pr-5 pl-5 pb-2 mt-5">
+                <h2 className="text-xl font-bold">
+                  {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </h2>
+                <button 
+                  className="text-gray-600 bg-gray-100 hover:bg-gray-200 text-xs font-medium transition-colors ml-3 px-2.5 py-1 rounded-full"
+                  onClick={() => {/* 더보기 기능 추가 */}}
+                >
+                  더보기
+                </button>
+              </div>
+              <div className="flex flex-col">
+                <MealSection />
+              </div>
             </div>
           </section>
           <Footer />
@@ -604,7 +626,7 @@ export default function Home() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0 }}
-            className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowLoginPopup(false)
             }}
@@ -628,12 +650,12 @@ export default function Home() {
 
               <div className="p-8">
                 <h2 className="text-3xl font-bold mb-2 text-center text-gray-800">
-                  {isLoginForm ? '이디저디' : '회원가입'}
+                  {isLoginForm ? '로그인' : '회원가입'}
                 </h2>
                 <p className="text-center text-gray-600 mb-8">
-                  {isLoginForm 
+                  {isLoginForm || signupStep === 5
                     ? '' 
-                    : `${signupStep}/5 단계`}
+                    : `${signupStep}/4 단계`}
                 </p>
                 
                 {isLoginForm ? (
@@ -650,7 +672,7 @@ export default function Home() {
                     <button 
                       type="button"
                       onClick={toggleForm}
-                      className="text-blue-600 hover:text-blue-700 font-medium"
+                      className="text-[#3ECF8E] hover:text-[#3ECF8E] font-medium"
                     >
                       {isLoginForm ? '회원가입' : '로그인'}
                     </button>

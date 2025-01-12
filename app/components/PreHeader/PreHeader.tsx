@@ -1,4 +1,8 @@
 'use client';
+// 3ECF8E
+// 00C573
+// 006239
+// 128453
 
 import Image from "next/image";
 import Link from "next/link";
@@ -10,25 +14,22 @@ export default function PreHeader() {
         <div className="flex items-center">
           <Link href="/" className="flex items-center gap-2">
             <Image
-              src="/globe2.png"
+              src="/3dlogo.png"
               alt="로고"
-              width={24}
-              height={24}
-              className="w-6 h-6"
+              width={27}
+              height={27}
+              className="w-8 h-8"
               quality={100}
               priority
             />
-            <h1 className="text-lg font-bold text-lg">이디저디</h1>
-            <span className="px-2 py-1 text-xs bg-green-500 text-white rounded-full">
-              신규
-            </span>
+            <h1 className="text-[21px] font-extrabold">이디저디</h1>
           </Link>
         </div>
         
         <div className="flex items-center gap-4">
           <Link 
             href="/contact" 
-            className="text-gray-600 hover:text-gray-900 font-bold text-lg"
+            className="text-gray-600 hover:text-black font-bold text-lg px-3 py-2 rounded-lg hover:bg-gray-100 transition-all duration-180"
           >
             문의하기
           </Link>

@@ -52,7 +52,7 @@ export default function TimeSelection({ formData, setFormData, onNext }: TimeSel
           className={`
             w-full py-4 rounded-xl text-white font-medium text-lg transition-all
             ${formData.time 
-              ? 'bg-blue-500 hover:bg-blue-600 shadow-sm' 
+              ? 'bg-[#3ECF8E] hover:bg-[#00C573] shadow-sm' 
               : 'bg-gray-300 cursor-not-allowed'}
           `}
         >

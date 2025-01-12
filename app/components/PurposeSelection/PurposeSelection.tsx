@@ -35,7 +35,7 @@ export default function PurposeSelection({
   return (
     <div className="bg-white p-6">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-2">사용 목적</h2>
+        <h1 className="text-2xl font-bold text-[#00C573] mb-2">목적 선택</h1>
         <p className="text-gray-500 mb-6 text-sm">특별실 사용 목적을 선택해주세요</p>
       </div>
 
@@ -109,7 +109,7 @@ export default function PurposeSelection({
         <button
           onClick={onNext}
           disabled={!formData.purpose || (formData.purpose === "기타" && !formData.purposeDetail)}
-          className="w-full py-3.5 px-4 rounded-xl bg-blue-500 text-[17px] text-white font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 px-4 rounded-xl bg-[#3ECF8E] text-[17px] text-white font-medium hover:bg-[#3ECF8E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           다음으로
         </button>

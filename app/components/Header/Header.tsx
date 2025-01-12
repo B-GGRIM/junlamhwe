@@ -44,26 +44,26 @@ export default function Header() {
               priority
             />
             <h1 className="text-lg font-bold">이디저디</h1>
-            <span className="px-2 py-1 text-xs bg-blue-500 text-white rounded-full">
+            <span className="px-2 py-1 text-xs bg-[#00C573] text-white rounded-full font-semibold">
               신규
             </span>
           </Link>
-          <div className="flex items-center gap-8 ml-4">
+          <div className="flex items-center gap-6 ml-4">
             <Link 
               href="/home/specialroom" 
-              className="text-gray-600 hover:text-gray-900 font-bold text-lg"
+              className="text-gray-600 hover:text-black font-bold text-lg px-3 py-2 rounded-lg hover:bg-gray-100 transition-all duration-180"
             >
               특별실
             </Link>
             <Link 
               href="/electronics" 
-              className="text-gray-600 hover:text-gray-900 font-bold text-lg"
+              className="text-gray-600 hover:text-black font-bold text-lg px-3 py-2 rounded-lg hover:bg-gray-100 transition-all duration-180"
             >
               전자기기
             </Link>
             <Link 
               href="/contact" 
-              className="text-gray-600 hover:text-gray-900 font-bold text-lg"
+              className="text-gray-600 hover:text-black font-bold text-lg px-3 py-2 rounded-lg hover:bg-gray-100 transition-all duration-180"
             >
               문의하기
             </Link>
@@ -72,7 +72,7 @@ export default function Header() {
         
         <div className="flex items-center relative" ref={menuRef}>
           <button 
-            className="p-2 hover:bg-gray-100 rounded-full"
+            className="p-2 hover:bg-gray-100 rounded-full duration-180"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
             <Image
@@ -85,54 +85,62 @@ export default function Header() {
           </button>
 
           {isMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+            <div className="absolute right-0 top-full mt-2 w-40 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
               <div className="py-1">
-                <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center">
-                  <Image
-                    src="/night-mode.png"
-                    alt="색상 모드"
-                    width={16}
-                    height={16}
-                    quality={100}
-                    className="w-4 min-w-[16px] mr-3"
-                  />
-                  색상 설정
+                <button className="w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center">
+                  <div className="flex items-center px-3 py-2 rounded-md hover:bg-gray-50 hover:text-black w-full">
+                    <Image
+                      src="/night-mode.png"
+                      alt="색상 모드"
+                      width={16}
+                      height={16}
+                      quality={100}
+                      className="w-4 min-w-[16px] mr-3"
+                    />
+                    색상 설정
+                  </div>
                 </button>
-                <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center">
-                  <Image
-                    src="/bell.png"
-                    alt="알림"
-                    width={14}
-                    height={14}
-                    quality={100}
-                    className="w-4 min-w-[16px] mr-3"
-                  />
-                  알림
+                <button className="w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center">
+                  <div className="flex items-center px-3 py-2 rounded-md hover:bg-gray-50 hover:text-black w-full">
+                    <Image
+                      src="/bell.png"
+                      alt="알림"
+                      width={14}
+                      height={14}
+                      quality={100}
+                      className="w-4 min-w-[16px] mr-3"
+                    />
+                    알림
+                  </div>
                 </button>
-                <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center">
-                  <Image
-                    src="/cogwheel.png"
-                    alt="설정"
-                    width={10}
-                    height={10}
-                    quality={100}
-                    className="w-4 min-w-[16px] mr-3"
-                  />
-                  설정
+                <button className="w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center">
+                  <div className="flex items-center px-3 py-2 rounded-md hover:bg-gray-50 hover:text-black w-full">
+                    <Image
+                      src="/cogwheel.png"
+                      alt="설정"
+                      width={10}
+                      height={10}
+                      quality={100}
+                      className="w-4 min-w-[16px] mr-3"
+                    />
+                    설정
+                  </div>
                 </button>
                 <button 
                   onClick={handleLogout}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 group flex items-center"
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center"
                 >
-                  <Image
-                    src="/logout.png"
-                    alt="로그아웃"
-                    width={14}
-                    height={14}
-                    quality={100}
-                    className="w-4 min-w-[16px] mr-3 group-hover:filter group-hover:invert-[0.4] group-hover:sepia-[1] group-hover:saturate-[7500%] group-hover:hue-rotate-[353deg] group-hover:brightness-[104%] group-hover:contrast-[104%]"
-                  />
-                  로그아웃
+                  <div className="flex items-center px-3 py-2 rounded-md hover:bg-red-50 hover:text-red-600 w-full">
+                    <Image
+                      src="/logout.png"
+                      alt="로그아웃"
+                      width={14}
+                      height={14}
+                      quality={100}
+                      className="w-4 min-w-[16px] mr-3 hover:filter hover:invert-[0.4] hover:sepia-[1] hover:saturate-[7500%] hover:hue-rotate-[353deg] hover:brightness-[104%] hover:contrast-[104%]"
+                    />
+                    로그아웃
+                  </div>
                 </button>
               </div>
             </div>

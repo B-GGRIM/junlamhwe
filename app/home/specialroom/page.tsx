@@ -70,11 +70,11 @@ export default function SpecialRoom() {
       <Header />
       <div className="max-w-2xl mx-auto p-6 mt-8 mb-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">특별실 신청</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-3">특별실 신청</h1>
           <div className="relative mb-8">
             <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-100 -translate-y-1/2" />
             <div 
-              className="absolute top-1/2 left-0 h-1 bg-blue-500 transition-all duration-300 -translate-y-1/2"
+              className="absolute top-1/2 left-0 h-1 bg-[#3ECF8E] transition-all duration-300 -translate-y-1/2"
               style={{ width: `${(step / 5) * 100}%` }}
             />
             <div className="relative flex justify-between">
@@ -85,7 +85,7 @@ export default function SpecialRoom() {
                     w-8 h-8 rounded-full flex items-center justify-center text-sm
                     transition-all duration-300 relative
                     ${step >= num 
-                      ? 'bg-blue-500 text-white shadow-lg' 
+                      ? 'bg-[#3ECF8E] text-white shadow-lg' 
                       : 'bg-white border-2 border-gray-200 text-gray-400'
                     }
                   `}

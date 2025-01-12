@@ -62,7 +62,7 @@ export default function LocationSelection({
 
   return (
     <div className="bg-white p-6">
-      <h2 className="text-2xl font-bold mb-2">어느 특별실을 사용하시나요?</h2>
+      <h1 className="text-2xl font-bold text-[#00C573] mb-2">위치 선택</h1>
       <p className="text-gray-500 mb-8 text-sm">특별실을 선택해주세요</p>
 
       <Listbox 
@@ -144,7 +144,7 @@ export default function LocationSelection({
         </button>
         <button
           onClick={onNext}
-          className="w-full py-3.5 px-4 rounded-xl bg-blue-500 text-white text-[17px] font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 px-4 rounded-xl bg-[#3ECF8E] text-white text-[17px] font-medium hover:bg-[#3ECF8E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={!formData.location || (formData.location === "기타" && !formData.etcDetail)}
         >
           다음으로

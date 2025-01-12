@@ -52,7 +52,7 @@ export default function TeacherSelection({
 
   return (
     <div className="bg-white p-6">
-      <h2 className="text-2xl font-bold mb-2">담당 교사를 선택해주세요</h2>
+      <h1 className="text-2xl font-bold text-[#00C573]">선생님 선택</h1>
       <p className="text-gray-500 mb-8 text-sm">담당할 교사를 검색하여 선택해주세요</p>
       
       {/* 검색 드롭다운 */}
@@ -166,7 +166,7 @@ export default function TeacherSelection({
         <button
           onClick={onSubmit}
           disabled={!formData.teacher}
-          className="w-full py-3.5 px-4 rounded-xl bg-blue-500 text-white text-[17px] font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 px-4 rounded-xl bg-[#3ECF8E] text-white text-[17px] font-medium hover:bg-[#3ECF8E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           제출하기
         </button>

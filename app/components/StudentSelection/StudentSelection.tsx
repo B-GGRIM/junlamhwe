@@ -145,7 +145,7 @@ export default function StudentSelection({
 
   return (
     <div className="bg-white p-6">
-      <h2 className="text-2xl font-bold mb-2">참여 학생을 선택해주세요</h2>
+      <h1 className="text-2xl font-bold text-[#00C573]">학생 선택</h1>
       <p className="text-gray-500 mb-8 text-sm">참여할 학생들을 검색하여 선택해주세요</p>
       
       {/* 검색 드롭다운 */}
@@ -257,7 +257,7 @@ export default function StudentSelection({
         <button
           onClick={onNext}
           disabled={formData.students.length === 0}
-          className="w-full py-3.5 px-4 rounded-xl bg-blue-500 text-white text-[17px] font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 px-4 rounded-xl bg-[#3ECF8E] text-white text-[17px] font-medium hover:bg-[#3ECF8E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           다음으로
         </button>
