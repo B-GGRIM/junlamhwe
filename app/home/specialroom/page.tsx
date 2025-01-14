@@ -8,8 +8,12 @@ import PurposeSelection from "@/app/components/PurposeSelection/PurposeSelection
 import StudentSelection from "@/app/components/StudentSelection/StudentSelection";
 import TeacherSelection from "@/app/components/TeacherSelection/TeacherSelection";
 import Footer from "@/app/components/Footer/Footer";
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useRouter } from 'next/navigation'
 
 export default function SpecialRoom() {
+  const supabase = createClientComponentClient()
+  const router = useRouter()
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     time: "",
@@ -60,10 +64,46 @@ export default function SpecialRoom() {
     }
   };
 
-  const handleSubmit = () => {
-    // 여기에 제출 로직 구현
-    console.log('최종 제출된 데이터:', formData);
-  };
+  const handleSubmit = async () => {
+    // Supabase로 전송될 데이터 로깅
+    console.log('특별실 신청 데이터:', {
+      time: formData.time,
+      location: formData.location,
+      purpose: formData.purpose,
+      students: formData.students,
+      teacher: formData.teacher,
+      status: 'pending'
+    });
+
+    try {
+      const { data, error } = await supabase
+        .from('special_room_requests')
+        .insert([
+          {
+            time: formData.time,
+            location: formData.location,
+            purpose: formData.purpose,
+            students: formData.students,
+            teacher: formData.teacher,
+            status: 'pending'
+          }
+        ])
+        .select()
+
+      if (error) {
+        throw error
+      }
+
+      // 성공 시 응답 데이터도 로깅
+      console.log('저장된 데이터:', data)
+      alert('특별실 신청이 완료되었습니다.')
+      router.push('/home')
+      
+    } catch (error) {
+      console.error('Error inserting data:', error)
+      alert('신청 중 오류가 발생했습니다. 다시 시도해주세요.')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white">
