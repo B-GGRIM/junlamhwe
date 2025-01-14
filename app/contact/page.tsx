@@ -48,7 +48,7 @@ export default function ContactPage() {
             <div>
               <button
                 type="submit"
-                className="w-full rounded-lg bg-blue-600 px-5 py-2.5 text-center text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300"
+                className="w-full rounded-lg bg-[#00c573] px-5 py-2.5 text-center text-sm font-medium text-white hover:bg-[#006239] border-2 transition-all duration-200"
               >
                 보내기
               </button>

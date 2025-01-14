@@ -34,19 +34,16 @@ export default function Header() {
       <div className="max-w-6xl mx-auto px-5 sm:px-7 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-12">
           <Link href="/home" className="flex items-center gap-2">
-            <Image
-              src="/globe2.png"
+          <Image
+              src="/3dlogo.png"
               alt="로고"
-              width={24}
-              height={24}
-              className="w-6 h-6"
+              width={27}
+              height={27}
+              className="w-8 h-8"
               quality={100}
               priority
             />
             <h1 className="text-lg font-bold">이디저디</h1>
-            <span className="px-2 py-1 text-xs bg-[#00C573] text-white rounded-full font-semibold">
-              신규
-            </span>
           </Link>
           <div className="flex items-center gap-6 ml-4">
             <Link 
@@ -85,7 +82,7 @@ export default function Header() {
           </button>
 
           {isMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-40 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+            <div className="absolute right-0 top-full mt-2 w-40 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
               <div className="py-1">
                 <button className="w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center">
                   <div className="flex items-center px-3 py-2 rounded-md hover:bg-gray-50 hover:text-black w-full">

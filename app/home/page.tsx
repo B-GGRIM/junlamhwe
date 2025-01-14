@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Header from '../components/Header/Header'
 import Footer from '@/app/components/Footer/Footer';
 import { useRouter } from 'next/navigation'
+import MealSection from '../components/MealSection/MealSection'
 
 export default function TestPage() {
   const [userData, setUserData] = useState<any>(null)
@@ -40,19 +41,46 @@ export default function TestPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <div className="flex-1 p-8">
-        <h1 className="text-2xl font-bold mb-4">테스트 페이지</h1>
-        {!isLoading && userData && (
-          <p className="mb-4">로그인 성공! {userData.name}님 환영합니다!</p>
-        )}
-        
-        <button
-          onClick={handleLogout}
-          className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded"
-        >
-          로그아웃
-        </button>
+      <div className="relative w-full h-[75vh]">
+        {/* Background Image */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center -z-10" 
+          style={{ backgroundImage: 'url("/background01.jpg")' }}
+        ></div>
+
+        {/* Noise overlay */}
+        <div 
+          className="absolute inset-0 opacity-[0.25] mix-blend-soft-light z-0"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+            backgroundSize: '200px 200px'
+          }}
+        ></div>
+
+        {/* Overlay for depth */}
+        <div className="absolute inset-0 bg-gradient-to-br from-transparent via-black/10 to-black/20 z-0"></div>
       </div>
+      
+      {/* Meal Section */}
+      <section className="bg-white py-28">
+            <div className="max-w-6xl mx-auto px-4">
+              <div className="flex items-center pr-5 pl-5 pb-2 mt-5">
+                <h2 className="text-xl font-bold">
+                  {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </h2>
+                <button 
+                  className="text-gray-600 bg-gray-100 hover:bg-gray-200 text-xs font-medium transition-colors ml-3 px-2.5 py-1 rounded-full"
+                  onClick={() => {/* 더보기 기능 추가 */}}
+                >
+                  더보기
+                </button>
+              </div>
+              <div className="flex flex-col">
+                <MealSection />
+              </div>
+            </div>
+          </section>
+      
       <Footer />
     </div>
   )

@@ -35,7 +35,7 @@ export default function PurposeSelection({
   return (
     <div className="bg-white p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#00C573] mb-2">목적 선택</h1>
+        <h1 className="text-2xl font-bold mb-2">목적 선택</h1>
         <p className="text-gray-500 mb-6 text-sm">특별실 사용 목적을 선택해주세요</p>
       </div>
 

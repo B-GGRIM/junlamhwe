@@ -52,7 +52,7 @@ export default function TeacherSelection({
 
   return (
     <div className="bg-white p-6">
-      <h1 className="text-2xl font-bold text-[#00C573]">선생님 선택</h1>
+      <h1 className="text-2xl font-bold">선생님 선택</h1>
       <p className="text-gray-500 mb-8 text-sm">담당할 교사를 검색하여 선택해주세요</p>
       
       {/* 검색 드롭다운 */}
@@ -138,12 +138,12 @@ export default function TeacherSelection({
                 return (
                   <div 
                     key={selectedTeacher.id}
-                    className="inline-flex items-center bg-blue-50 text-blue-600 rounded-full px-3 py-1"
+                    className="inline-flex items-center bg-gray-100 text-gray-600 rounded-full px-3 py-1"
                   >
                     <span>{selectedTeacher.name} ({selectedTeacher.subject})</span>
                     <button
                       onClick={() => setFormData({ ...formData, teacher: null })}
-                      className="ml-2 text-blue-400 hover:text-blue-600"
+                      className="ml-2 text-gray-400 hover:text-gray-500"
                     >
                       ×
                     </button>

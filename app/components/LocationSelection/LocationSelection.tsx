@@ -62,7 +62,7 @@ export default function LocationSelection({
 
   return (
     <div className="bg-white p-6">
-      <h1 className="text-2xl font-bold text-[#00C573] mb-2">위치 선택</h1>
+      <h1 className="text-2xl font-bold mb-2">위치 선택</h1>
       <p className="text-gray-500 mb-8 text-sm">특별실을 선택해주세요</p>
 
       <Listbox 

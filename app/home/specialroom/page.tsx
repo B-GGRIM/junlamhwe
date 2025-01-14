@@ -72,12 +72,12 @@ export default function SpecialRoom() {
         <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-3">특별실 신청</h1>
           <div className="relative mb-8">
-            <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-100 -translate-y-1/2" />
+            <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-100 -translate-y-1/2 z-0" />
             <div 
-              className="absolute top-1/2 left-0 h-1 bg-[#3ECF8E] transition-all duration-300 -translate-y-1/2"
-              style={{ width: `${(step / 5) * 100}%` }}
+              className="absolute top-1/2 left-0 h-1 bg-[#3ECF8E] transition-all duration-300 -translate-y-1/2 z-0"
+              style={{ width: `${((step - 1) / 4) * 100}%` }}
             />
-            <div className="relative flex justify-between">
+            <div className="relative flex justify-between z-10">
               {[1, 2, 3, 4, 5].map((num) => (
                 <div
                   key={num}

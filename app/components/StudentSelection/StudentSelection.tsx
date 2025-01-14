@@ -145,7 +145,7 @@ export default function StudentSelection({
 
   return (
     <div className="bg-white p-6">
-      <h1 className="text-2xl font-bold text-[#00C573]">학생 선택</h1>
+      <h1 className="text-2xl font-bold">학생 선택</h1>
       <p className="text-gray-500 mb-8 text-sm">참여할 학생들을 검색하여 선택해주세요</p>
       
       {/* 검색 드롭다운 */}
@@ -227,12 +227,12 @@ export default function StudentSelection({
           {getSelectedStudents().map((student) => (
             <div 
               key={student.id}
-              className="inline-flex items-center bg-blue-50 text-blue-600 rounded-full px-3 py-1"
+              className="inline-flex items-center bg-gray-100 text-gray-600 rounded-full px-3 py-1"
             >
               <span>{student.name} {student.id}</span>
               <button
                 onClick={() => handleStudentSelection(student.id)}
-                className="ml-2 text-blue-400 hover:text-blue-600"
+                className="ml-2 text-gray-400 hover:text-gray-500"
               >
                 ×
               </button>

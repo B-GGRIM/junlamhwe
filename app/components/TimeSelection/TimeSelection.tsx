@@ -18,9 +18,9 @@ export default function TimeSelection({ formData, setFormData, onNext }: TimeSel
               key={option.value}
               className={`
                 relative p-4 rounded-xl cursor-pointer transition-all
-                border-2 hover:border-blue-500
+                border-2 hover:border-[#3ECF8E]
                 ${formData.time === option.value 
-                  ? 'border-blue-500 bg-blue-50' 
+                  ? 'border-[#3ECF8E] bg-[#EfFfFa]' 
                   : 'border-gray-200 hover:bg-gray-50'}
               `}
             >
@@ -39,7 +39,7 @@ export default function TimeSelection({ formData, setFormData, onNext }: TimeSel
                   value={option.value}
                   checked={formData.time === option.value}
                   onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className="w-5 h-5 text-blue-500 focus:ring-blue-500"
+                  className="w-5 h-5 text-[#3ECF8E] focus:ring-[#3ECF8E]"
                 />
               </div>
             </label>
