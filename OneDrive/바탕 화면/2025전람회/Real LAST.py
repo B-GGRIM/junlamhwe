@@ -17,10 +17,12 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 # Windows API constants
+RT_STRING = 6
 RT_RCDATA = 10
 
 # Windows API functions
 kernel32 = ctypes.windll.kernel32
+user32 = ctypes.windll.user32
 
 # Define Windows API function signatures
 kernel32.BeginUpdateResourceW.argtypes = [wintypes.LPCWSTR, wintypes.BOOL]
@@ -45,6 +47,68 @@ kernel32.GetLastError.restype = wintypes.DWORD
 def MAKEINTRESOURCE(i):
     """Convert integer resource ID to LPCWSTR"""
     return ctypes.c_wchar_p(i)
+
+class StringTableParser:
+    """String Table 파서"""
+    
+    def __init__(self):
+        self.strings = {}  # {string_id: string_text}
+    
+    def parse_string_table(self, data: bytes, block_id: int) -> Dict[int, str]:
+        """String Table 블록 파싱"""
+        strings = {}
+        pos = 0
+        
+        # 각 블록은 16개의 문자열을 포함
+        base_id = (block_id - 1) * 16
+        
+        for i in range(16):
+            if pos + 2 > len(data):
+                break
+            
+            # 문자열 길이 (문자 수, 바이트 수 아님)
+            str_len = struct.unpack('<H', data[pos:pos+2])[0]
+            pos += 2
+            
+            if str_len > 0:
+                # UTF-16LE로 인코딩된 문자열
+                byte_len = str_len * 2
+                if pos + byte_len <= len(data):
+                    string_bytes = data[pos:pos+byte_len]
+                    try:
+                        string_text = string_bytes.decode('utf-16-le', errors='ignore')
+                        string_id = base_id + i
+                        strings[string_id] = string_text
+                    except:
+                        pass
+                    pos += byte_len
+        
+        return strings
+    
+    def build_string_table(self, strings: Dict[int, str], block_id: int) -> bytes:
+        """String Table 블록 재구성"""
+        data = bytearray()
+        base_id = (block_id - 1) * 16
+        
+        # 16개 문자열 슬롯
+        for i in range(16):
+            string_id = base_id + i
+            
+            if string_id in strings:
+                # 문자열이 있는 경우
+                text = strings[string_id]
+                encoded = text.encode('utf-16-le')
+                str_len = len(text)  # 문자 수
+                
+                # 길이 쓰기 (2바이트)
+                data.extend(struct.pack('<H', str_len))
+                # 문자열 쓰기
+                data.extend(encoded)
+            else:
+                # 빈 문자열
+                data.extend(struct.pack('<H', 0))
+        
+        return bytes(data)
 
 class DFMValueType(IntEnum):
     """DFM value types"""
@@ -286,7 +350,7 @@ class ImprovedDFMParser:
         return None
     
     def _extract_typed_value(self, data: bytes, pos: int) -> Optional[CaptionInfo]:
-        """타입 바이트가 있는 값 추출 (기존 로직)"""
+        """타입 바이트가 있는 값 추출"""
         if pos >= len(data):
             return None
         
@@ -786,20 +850,23 @@ class DFMRestructurer:
         
         return encoded[:max_length]
 
-class UnlimitedCaptionTranslatorGUI:
-    """범용 Caption 번역 GUI - API 전용"""
+class UniversalResourceTranslatorGUI:
+    """통합 리소스 번역 GUI - String Table + RCData"""
     
     def __init__(self, root):
         self.root = root
-        self.root.title("Universal Caption Translator - 범용 캡션 번역기")
-        self.root.geometry("1200x800")
+        self.root.title("Universal Resource Translator - 통합 리소스 번역기")
+        self.root.geometry("1400x900")
         
         self.pe = None
-        self.resources = []
+        self.string_tables = {}  # {(block_id, lang_id): {string_id: string}}
+        self.rcdata_resources = []  # DFM resources
         self.file_path = ""
-        self.parser = ImprovedDFMParser()  # 개선된 파서 사용
-        self.restructurer = DFMRestructurer()
-        self.modifications = {}
+        self.string_parser = StringTableParser()
+        self.dfm_parser = ImprovedDFMParser()
+        self.dfm_restructurer = DFMRestructurer()
+        self.string_modifications = {}  # {string_id: translated_text}
+        self.rcdata_modifications = {}  # {resource_name: {original: translated}}
         
         self.api_key = ""
         
@@ -810,19 +877,18 @@ class UnlimitedCaptionTranslatorGUI:
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Warning frame
-        warning_frame = ttk.LabelFrame(main_frame, text="⚠️ Universal Translation Mode - 범용 번역 모드", padding="10")
-        warning_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
+        # Title frame
+        title_frame = ttk.LabelFrame(main_frame, text="Universal Resource Translator", padding="10")
+        title_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
         
-        warning_label = ttk.Label(warning_frame, 
-                                text="이 프로그램은 모든 Windows EXE 파일의 영어 텍스트를 한국어로 번역합니다.\n"
-                                "• 자동으로 영어 텍스트를 감지하여 번역\n"
-                                "• ChatGPT API를 사용한 자연스럽고 정확한 한국어 번역\n"
-                                "• 개선된 파서로 모든 Caption과 텍스트 속성 감지\n"
-                                "• 번역 길이 제한 없이 DFM 파일 자동 재구성\n"
-                                "• 모든 Delphi/C++ Builder 프로그램 완벽 지원",
-                                foreground="blue")
-        warning_label.pack()
+        title_label = ttk.Label(title_frame, 
+                               text="Windows EXE 파일의 String Table과 DFM 리소스를 한번에 번역합니다.\n"
+                               "• String Table: 프로그램 메시지, 에러, 상태 텍스트\n"
+                               "• DFM 리소스: 폼, 다이얼로그, UI 컴포넌트의 Caption\n"
+                               "• ChatGPT API를 사용한 정확한 한국어 번역\n"
+                               "• 한 번의 클릭으로 모든 리소스 번역",
+                               foreground="blue")
+        title_label.pack()
         
         # File selection
         file_frame = ttk.LabelFrame(main_frame, text="파일 선택", padding="10")
@@ -831,71 +897,136 @@ class UnlimitedCaptionTranslatorGUI:
         self.file_path_var = tk.StringVar()
         ttk.Entry(file_frame, textvariable=self.file_path_var, width=60).grid(row=0, column=0, padx=5)
         ttk.Button(file_frame, text="찾아보기", command=self.browse_file).grid(row=0, column=1)
-        ttk.Button(file_frame, text="리소스 로드", command=self.load_resources).grid(row=0, column=2, padx=5)
-        
-        # Backup controls
+        ttk.Button(file_frame, text="리소스 로드", command=self.load_all_resources).grid(row=0, column=2, padx=5)
         ttk.Button(file_frame, text="백업 생성", command=self.create_backup).grid(row=0, column=3, padx=5)
         ttk.Button(file_frame, text="백업 복원", command=self.restore_backup).grid(row=0, column=4, padx=5)
-        
-        # API Key
         ttk.Button(file_frame, text="API 키", command=self.set_api_key).grid(row=0, column=5, padx=5)
         
         # Statistics
         self.stats_label = ttk.Label(file_frame, text="", foreground="green")
         self.stats_label.grid(row=1, column=0, columnspan=6, pady=5)
         
-        # Main content
-        main_paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-        main_paned.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        # Main content - Notebook
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
-        # Left panel - Resources
-        left_frame = ttk.LabelFrame(main_paned, text="DFM 리소스", padding="10")
+        # Tab 1: String Table
+        string_frame = ttk.Frame(self.notebook)
+        self.notebook.add(string_frame, text="String Table")
+        self.setup_string_table_tab(string_frame)
         
-        columns = ("ID", "리소스", "크기", "캡션 수", "상태")
+        # Tab 2: DFM Resources
+        dfm_frame = ttk.Frame(self.notebook)
+        self.notebook.add(dfm_frame, text="DFM Resources")
+        self.setup_dfm_resources_tab(dfm_frame)
+        
+        # Tab 3: Translation Summary
+        summary_frame = ttk.Frame(self.notebook)
+        self.notebook.add(summary_frame, text="번역 요약")
+        self.setup_summary_tab(summary_frame)
+        
+        # Bottom buttons
+        bottom_frame = ttk.Frame(main_frame)
+        bottom_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
+        
+        # Translation button
+        translate_button = ttk.Button(bottom_frame, 
+                                    text="전체 번역 (String Table + DFM)", 
+                                    command=self.translate_all_resources,
+                                    style="Accent.TButton")
+        translate_button.pack(side=tk.RIGHT, padx=5)
+        
+        # Apply button
+        apply_button = ttk.Button(bottom_frame, 
+                                text="번역 적용", 
+                                command=self.apply_all_translations)
+        apply_button.pack(side=tk.RIGHT, padx=5)
+        
+        # Clear button
+        ttk.Button(bottom_frame, text="초기화", command=self.clear_all_modifications).pack(side=tk.RIGHT, padx=5)
+        
+        # Status bar
+        self.status_var = tk.StringVar(value="준비")
+        status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN)
+        status_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Configure weights
+        self.root.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(2, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+    
+    def setup_string_table_tab(self, parent):
+        """String Table 탭 설정"""
+        # String tree
+        columns = ("ID", "영어 원문", "한국어 번역", "상태")
+        self.string_tree = ttk.Treeview(parent, columns=columns, show="tree headings", height=20)
+        
+        self.string_tree.heading("#0", text="블록")
+        self.string_tree.heading("ID", text="ID")
+        self.string_tree.heading("영어 원문", text="영어 원문")
+        self.string_tree.heading("한국어 번역", text="한국어 번역")
+        self.string_tree.heading("상태", text="상태")
+        
+        self.string_tree.column("#0", width=100)
+        self.string_tree.column("ID", width=60)
+        self.string_tree.column("영어 원문", width=350)
+        self.string_tree.column("한국어 번역", width=350)
+        self.string_tree.column("상태", width=80)
+        
+        # Scrollbar
+        string_scroll = ttk.Scrollbar(parent, orient="vertical", command=self.string_tree.yview)
+        self.string_tree.configure(yscrollcommand=string_scroll.set)
+        
+        self.string_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        string_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+    
+    def setup_dfm_resources_tab(self, parent):
+        """DFM Resources 탭 설정"""
+        # Paned window
+        paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        paned.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Left: Resource list
+        left_frame = ttk.Frame(paned)
+        
+        columns = ("리소스", "크기", "캡션 수", "상태")
         self.resource_tree = ttk.Treeview(left_frame, columns=columns, show="headings", height=20)
         
-        self.resource_tree.heading("ID", text="ID")
         self.resource_tree.heading("리소스", text="리소스")
         self.resource_tree.heading("크기", text="크기")
         self.resource_tree.heading("캡션 수", text="캡션 수")
         self.resource_tree.heading("상태", text="상태")
         
-        self.resource_tree.column("ID", width=50)
-        self.resource_tree.column("리소스", width=120)
+        self.resource_tree.column("리소스", width=150)
         self.resource_tree.column("크기", width=80)
         self.resource_tree.column("캡션 수", width=60)
         self.resource_tree.column("상태", width=80)
         
-        tree_scroll = ttk.Scrollbar(left_frame, orient="vertical", command=self.resource_tree.yview)
-        self.resource_tree.configure(yscrollcommand=tree_scroll.set)
+        resource_scroll = ttk.Scrollbar(left_frame, orient="vertical", command=self.resource_tree.yview)
+        self.resource_tree.configure(yscrollcommand=resource_scroll.set)
         
         self.resource_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        tree_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        resource_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
         self.resource_tree.bind('<<TreeviewSelect>>', self.on_resource_select)
         
-        # Middle panel - Structure view
-        middle_frame = ttk.LabelFrame(main_paned, text="DFM 구조", padding="10")
+        # Right: Caption list
+        right_frame = ttk.Frame(paned)
         
-        self.structure_text = scrolledtext.ScrolledText(middle_frame, wrap=tk.WORD, font=("Courier", 9))
-        self.structure_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Right panel - Captions
-        right_frame = ttk.LabelFrame(main_paned, text="캡션 번역", padding="10")
-        
-        # Caption list
-        caption_columns = ("원본", "번역", "크기 변화", "타입")
-        self.caption_tree = ttk.Treeview(right_frame, columns=caption_columns, show="headings", height=15)
+        caption_columns = ("원본", "번역", "타입")
+        self.caption_tree = ttk.Treeview(right_frame, columns=caption_columns, show="headings", height=20)
         
         self.caption_tree.heading("원본", text="원본")
         self.caption_tree.heading("번역", text="번역")
-        self.caption_tree.heading("크기 변화", text="크기 변화")
         self.caption_tree.heading("타입", text="타입")
         
-        self.caption_tree.column("원본", width=200)
-        self.caption_tree.column("번역", width=200)
-        self.caption_tree.column("크기 변화", width=80)
-        self.caption_tree.column("타입", width=60)
+        self.caption_tree.column("원본", width=250)
+        self.caption_tree.column("번역", width=250)
+        self.caption_tree.column("타입", width=80)
         
         caption_scroll = ttk.Scrollbar(right_frame, orient="vertical", command=self.caption_tree.yview)
         self.caption_tree.configure(yscrollcommand=caption_scroll.set)
@@ -903,52 +1034,23 @@ class UnlimitedCaptionTranslatorGUI:
         self.caption_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         caption_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
-        self.caption_tree.bind('<Double-Button-1>', self.on_caption_double_click)
+        paned.add(left_frame, weight=1)
+        paned.add(right_frame, weight=2)
         
-        # Caption operations
-        ops_frame = ttk.Frame(right_frame)
-        ops_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
-        
-        ttk.Button(ops_frame, text="편집", command=self.edit_caption).pack(side=tk.LEFT, padx=2)
-        ttk.Button(ops_frame, text="API 번역", command=self.translate_all_unlimited).pack(side=tk.LEFT, padx=2)
-        ttk.Button(ops_frame, text="크기 보고서", command=self.show_size_report).pack(side=tk.LEFT, padx=2)
-        ttk.Button(ops_frame, text="초기화", command=self.clear_modifications).pack(side=tk.LEFT, padx=2)
-        
-        # Add panels
-        main_paned.add(left_frame, weight=1)
-        main_paned.add(middle_frame, weight=2)
-        main_paned.add(right_frame, weight=2)
-        
-        # Bottom
-        bottom_frame = ttk.Frame(main_frame)
-        bottom_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
-        
-        # Status
-        self.status_var = tk.StringVar(value="준비 - 범용 번역 모드")
-        status_bar = ttk.Label(bottom_frame, textvariable=self.status_var, relief=tk.SUNKEN)
-        status_bar.pack(fill=tk.X, pady=2)
-        
-        # Action buttons
-        button_frame = ttk.Frame(bottom_frame)
-        button_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(button_frame, text="번역 적용", 
-                  command=self.apply_unlimited_modifications,
-                  style="Accent.TButton").pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="구조 검증", 
-                  command=self.verify_structure).pack(side=tk.RIGHT, padx=5)
-        
-        # Configure weights
-        self.root.rowconfigure(0, weight=1)
-        self.root.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(2, weight=1)
-        main_frame.columnconfigure(0, weight=1)
         left_frame.rowconfigure(0, weight=1)
         left_frame.columnconfigure(0, weight=1)
-        middle_frame.rowconfigure(0, weight=1)
-        middle_frame.columnconfigure(0, weight=1)
         right_frame.rowconfigure(0, weight=1)
         right_frame.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+    
+    def setup_summary_tab(self, parent):
+        """번역 요약 탭 설정"""
+        self.summary_text = scrolledtext.ScrolledText(parent, wrap=tk.WORD, font=("Courier", 10))
+        self.summary_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
     
     def browse_file(self):
         filename = filedialog.askopenfilename(
@@ -967,80 +1069,55 @@ class UnlimitedCaptionTranslatorGUI:
         
         try:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = f"{file_path}.unlimited_backup_{timestamp}"
-            
+            backup_path = f"{file_path}.unified_backup_{timestamp}"
             shutil.copy2(file_path, backup_path)
-            
-            messagebox.showinfo("성공", 
-                              f"백업이 생성되었습니다:\n{os.path.basename(backup_path)}")
+            messagebox.showinfo("성공", f"백업 생성: {os.path.basename(backup_path)}")
         except Exception as e:
-            messagebox.showerror("오류", f"백업 생성 실패: {str(e)}")
+            messagebox.showerror("오류", f"백업 실패: {str(e)}")
     
     def restore_backup(self):
-        """백업 복구"""
+        """백업 복원"""
         file_path = self.file_path_var.get()
         if not file_path:
             messagebox.showwarning("경고", "먼저 파일을 선택하세요")
             return
         
-        # Find backups
         directory = os.path.dirname(file_path)
         base_name = os.path.basename(file_path)
         
         backup_files = []
         for file in os.listdir(directory):
-            if (file.startswith(base_name + ".unlimited_backup") or 
-                file.startswith(base_name + ".backup") or
-                file.startswith(base_name + ".safe_backup")):
+            if file.startswith(base_name + ".") and "backup" in file:
                 backup_files.append(file)
         
         if not backup_files:
             messagebox.showerror("오류", "백업 파일을 찾을 수 없습니다!")
             return
         
-        # Select backup
+        # Selection dialog
         if len(backup_files) == 1:
             selected = backup_files[0]
         else:
-            # Selection dialog
             dialog = tk.Toplevel(self.root)
             dialog.title("백업 선택")
             dialog.geometry("600x400")
             dialog.transient(self.root)
             dialog.grab_set()
             
-            # Center dialog
-            dialog.update_idletasks()
-            x = (dialog.winfo_screenwidth() // 2) - 300
-            y = (dialog.winfo_screenheight() // 2) - 200
-            dialog.geometry(f"600x400+{x}+{y}")
+            ttk.Label(dialog, text="복원할 백업을 선택하세요:").pack(pady=10)
             
-            ttk.Label(dialog, text="복원할 백업을 선택하세요:", font=("Arial", 12)).pack(pady=10)
+            listbox = tk.Listbox(dialog)
+            listbox.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
             
-            listbox = tk.Listbox(dialog, font=("Courier", 10))
-            listbox.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
-            
-            # Sort by date
-            backup_info = []
-            for backup in backup_files:
-                backup_path = os.path.join(directory, backup)
-                mod_time = os.path.getmtime(backup_path)
-                size = os.path.getsize(backup_path) / 1024 / 1024  # MB
-                backup_info.append((backup, mod_time, size))
-            
-            backup_info.sort(key=lambda x: x[1], reverse=True)
-            
-            for backup, mod_time, size in backup_info:
-                time_str = datetime.datetime.fromtimestamp(mod_time).strftime("%Y-%m-%d %H:%M:%S")
-                display = f"{backup} ({time_str}, {size:.1f} MB)"
-                listbox.insert(tk.END, display)
+            for backup in sorted(backup_files, reverse=True):
+                listbox.insert(tk.END, backup)
             
             selected = [None]
             
             def restore():
                 if listbox.curselection():
                     idx = listbox.curselection()[0]
-                    selected[0] = backup_info[idx][0]
+                    selected[0] = backup_files[idx]
                     dialog.destroy()
             
             ttk.Button(dialog, text="복원", command=restore).pack(pady=10)
@@ -1051,24 +1128,18 @@ class UnlimitedCaptionTranslatorGUI:
             
             selected = selected[0]
         
-        # Restore
-        if messagebox.askyesno("복원 확인", 
-                             f"{selected}에서 복원하시겠습니까?\n\n현재 파일이 덮어씌워집니다!"):
+        if messagebox.askyesno("복원 확인", f"{selected}에서 복원하시겠습니까?"):
             try:
                 backup_path = os.path.join(directory, selected)
                 shutil.copy2(backup_path, file_path)
-                
                 messagebox.showinfo("성공", "백업에서 파일이 복원되었습니다!")
-                
-                # Reload
-                self.modifications.clear()
-                self.load_resources()
-                
+                self.clear_all_modifications()
+                self.load_all_resources()
             except Exception as e:
                 messagebox.showerror("오류", f"복원 실패: {str(e)}")
     
-    def load_resources(self):
-        """리소스 로드"""
+    def load_all_resources(self):
+        """모든 리소스 로드"""
         file_path = self.file_path_var.get()
         if not file_path:
             messagebox.showwarning("경고", "먼저 EXE 파일을 선택하세요.")
@@ -1078,32 +1149,79 @@ class UnlimitedCaptionTranslatorGUI:
         
         try:
             self.status_var.set("리소스 로드 중...")
-            self.resources.clear()
-            self.modifications.clear()
+            self.string_tables.clear()
+            self.rcdata_resources.clear()
+            self.string_modifications.clear()
+            self.rcdata_modifications.clear()
             
             # Clear UI
+            for item in self.string_tree.get_children():
+                self.string_tree.delete(item)
             for item in self.resource_tree.get_children():
                 self.resource_tree.delete(item)
-            self.clear_all_views()
+            for item in self.caption_tree.get_children():
+                self.caption_tree.delete(item)
             
             if self.pe:
                 self.pe.close()
             
             self.pe = pefile.PE(file_path)
             
-            resource_count = 0
-            total_captions = 0
+            string_count = 0
+            string_block_count = 0
+            rcdata_count = 0
+            caption_count = 0
             
-            # Extract RT_RCDATA resources
             if hasattr(self.pe, 'DIRECTORY_ENTRY_RESOURCE'):
                 for resource_type in self.pe.DIRECTORY_ENTRY_RESOURCE.entries:
-                    if resource_type.id == pefile.RESOURCE_TYPE['RT_RCDATA']:
+                    # String Table
+                    if resource_type.id == pefile.RESOURCE_TYPE['RT_STRING']:
+                        for resource_id in resource_type.directory.entries:
+                            block_id = resource_id.id if hasattr(resource_id, 'id') else 0
+                            
+                            if block_id > 0:
+                                string_block_count += 1
+                                
+                                # Create block node
+                                block_node = self.string_tree.insert("", "end", 
+                                                                   text=f"Block {block_id}",
+                                                                   open=True)
+                                
+                                for resource_lang in resource_id.directory.entries:
+                                    lang_id = resource_lang.id if hasattr(resource_lang, 'id') else 0
+                                    
+                                    # Get string table data
+                                    data = self.pe.get_data(
+                                        resource_lang.data.struct.OffsetToData,
+                                        resource_lang.data.struct.Size
+                                    )
+                                    
+                                    # Parse strings
+                                    strings = self.string_parser.parse_string_table(data, block_id)
+                                    
+                                    if strings:
+                                        self.string_tables[(block_id, lang_id)] = strings
+                                        string_count += len(strings)
+                                        
+                                        # Add to tree
+                                        for string_id, text in sorted(strings.items()):
+                                            self.string_tree.insert(block_node, "end",
+                                                                  values=(
+                                                                      string_id,
+                                                                      text,
+                                                                      "",  # 번역
+                                                                      "원본"
+                                                                  ),
+                                                                  tags=(string_id,))
+                    
+                    # RCData (DFM)
+                    elif resource_type.id == pefile.RESOURCE_TYPE['RT_RCDATA']:
                         for resource_id in resource_type.directory.entries:
                             resource_name = self.get_resource_name(resource_id)
                             
                             # Filter DFM resources (T-prefix)
                             if resource_name.startswith('T'):
-                                resource_count += 1
+                                rcdata_count += 1
                                 
                                 for resource_lang in resource_id.directory.entries:
                                     data = self.pe.get_data(
@@ -1113,10 +1231,9 @@ class UnlimitedCaptionTranslatorGUI:
                                     
                                     lang_id = resource_lang.id if hasattr(resource_lang, 'id') else 0
                                     
-                                    # Parse captions using improved parser
-                                    captions = self.parser.find_all_captions(data)
-                                    caption_count = len(captions)
-                                    total_captions += caption_count
+                                    # Parse captions
+                                    captions = self.dfm_parser.find_all_captions(data)
+                                    caption_count += len(captions)
                                     
                                     resource_info = {
                                         'id': resource_id.id if hasattr(resource_id, 'id') else 'N/A',
@@ -1129,24 +1246,25 @@ class UnlimitedCaptionTranslatorGUI:
                                         'status': '파싱됨'
                                     }
                                     
-                                    self.resources.append(resource_info)
+                                    self.rcdata_resources.append(resource_info)
                                     
                                     # Add to tree
                                     self.resource_tree.insert("", "end", values=(
-                                        resource_info['id'],
                                         resource_info['name'],
                                         f"{resource_info['size']} 바이트",
-                                        caption_count,
+                                        len(captions),
                                         resource_info['status']
                                     ))
             
             # Update statistics
             self.stats_label.config(
-                text=f"DFM 리소스 {resource_count}개 로드됨 | "
-                f"총 캡션 수: {total_captions}개 | "
-                f"범용 번역 준비 완료"
+                text=f"String Table: {string_block_count}개 블록, {string_count}개 문자열 | "
+                f"DFM 리소스: {rcdata_count}개, {caption_count}개 캡션"
             )
-            self.status_var.set("준비 - 리소스 로드 완료")
+            self.status_var.set("리소스 로드 완료")
+            
+            # Update summary
+            self.update_summary()
             
         except Exception as e:
             self.status_var.set("파일 로드 오류")
@@ -1169,10 +1287,25 @@ class UnlimitedCaptionTranslatorGUI:
         item = self.resource_tree.item(selection[0])
         values = item['values']
         
+        # Clear caption tree
+        for item in self.caption_tree.get_children():
+            self.caption_tree.delete(item)
+        
         # Find selected resource
-        for resource in self.resources:
-            if str(resource['name']) == str(values[1]):
-                self.display_resource_details(resource)
+        for resource in self.rcdata_resources:
+            if str(resource['name']) == str(values[0]):
+                # Display captions
+                for caption in resource['captions']:
+                    translation = caption.text
+                    if resource['name'] in self.rcdata_modifications:
+                        if caption.text in self.rcdata_modifications[resource['name']]:
+                            translation = self.rcdata_modifications[resource['name']][caption.text]
+                    
+                    self.caption_tree.insert("", "end", values=(
+                        caption.text,
+                        translation,
+                        caption.value_type
+                    ))
                 break
     
     def _is_english_text(self, text):
@@ -1195,251 +1328,77 @@ class UnlimitedCaptionTranslatorGUI:
         has_alpha = any(c.isalpha() for c in text)
         return ascii_count / len(text) > 0.8 and has_alpha
     
-    def display_resource_details(self, resource):
-        """Display resource details"""
-        self.clear_all_views()
-        
-        # Structure view
-        structure_info = f"리소스: {resource['name']}\n"
-        structure_info += f"크기: {resource['size']} 바이트\n"
-        structure_info += f"발견된 캡션: {len(resource['captions'])}개\n"
-        structure_info += "=" * 60 + "\n\n"
-        
-        # Show captions found
-        if resource['captions']:
-            structure_info += "DFM 객체 구조:\n"
-            structure_info += f"Form 또는 Dialog\n"
-            for i, caption in enumerate(resource['captions']):
-                # 영어인지 확인
-                is_english = self._is_english_text(caption.text)
-                lang_indicator = " [영어]" if is_english else " [번역됨]"
-                structure_info += f"  Caption {i+1} = '{caption.text}' [{caption.value_type}]{lang_indicator}\n"
-        
-        self.structure_text.insert(1.0, structure_info)
-        
-        # Caption list
-        for item in self.caption_tree.get_children():
-            self.caption_tree.delete(item)
-        
-        for caption in resource['captions']:
-            # Check for translation
-            translation = caption.text
-            if resource['name'] in self.modifications:
-                if caption.text in self.modifications[resource['name']]:
-                    translation = self.modifications[resource['name']][caption.text]
-            
-            # Size change
-            original_size = len(caption.text.encode('cp949', errors='ignore'))
-            translated_size = len(translation.encode('cp949', errors='ignore'))
-            size_change = translated_size - original_size
-            
-            if size_change > 0:
-                size_str = f"+{size_change}"
-            elif size_change < 0:
-                size_str = str(size_change)
-            else:
-                size_str = "0"
-            
-            # Add to tree
-            self.caption_tree.insert("", "end", values=(
-                caption.text,
-                translation,
-                size_str,
-                caption.value_type
-            ), tags=(resource['name'], caption.text))
-    
-    def clear_all_views(self):
-        """Clear all views"""
-        self.structure_text.delete(1.0, tk.END)
-        for item in self.caption_tree.get_children():
-            self.caption_tree.delete(item)
-    
-    def on_caption_double_click(self, event):
-        """Handle double click"""
-        self.edit_caption()
-    
-    def edit_caption(self):
-        """Edit caption - unlimited length"""
-        selection = self.caption_tree.selection()
-        if not selection:
-            messagebox.showwarning("경고", "편집할 캡션을 선택하세요.")
-            return
-        
-        item = self.caption_tree.item(selection[0])
-        values = item['values']
-        tags = item['tags']
-        
-        if len(tags) >= 2:
-            resource_name = tags[0]
-            original_text = tags[1]
-            
-            # Edit dialog
-            dialog = tk.Toplevel(self.root)
-            dialog.title("캡션 편집 - 길이 제한 없음")
-            dialog.geometry("600x400")
-            dialog.transient(self.root)
-            dialog.grab_set()
-            
-            # Main frame
-            main_frame = ttk.Frame(dialog, padding="10")
-            main_frame.pack(fill=tk.BOTH, expand=True)
-            
-            # Info
-            info_frame = ttk.LabelFrame(main_frame, text="캡션 정보", padding="10")
-            info_frame.pack(fill=tk.X, pady=(0, 10))
-            
-            ttk.Label(info_frame, text=f"리소스: {resource_name}").pack(anchor=tk.W)
-            ttk.Label(info_frame, text=f"원본: {original_text}").pack(anchor=tk.W)
-            ttk.Label(info_frame, text=f"원본 크기: {len(original_text.encode('cp949'))} 바이트").pack(anchor=tk.W)
-            
-            # Edit area
-            edit_frame = ttk.LabelFrame(main_frame, text="새 번역 (크기 제한 없음)", padding="10")
-            edit_frame.pack(fill=tk.BOTH, expand=True)
-            
-            text_widget = tk.Text(edit_frame, height=8, font=("Arial", 11))
-            text_widget.pack(fill=tk.BOTH, expand=True)
-            
-            # Pre-fill with current translation if exists
-            if resource_name in self.modifications:
-                if original_text in self.modifications[resource_name]:
-                    text_widget.insert("1.0", self.modifications[resource_name][original_text])
-                else:
-                    text_widget.insert("1.0", original_text)
-            else:
-                text_widget.insert("1.0", original_text)
-            
-            text_widget.focus_set()
-            text_widget.tag_add(tk.SEL, "1.0", tk.END)
-            
-            # Size indicator
-            size_label = ttk.Label(edit_frame, text="", foreground="blue")
-            size_label.pack(pady=(5, 0))
-            
-            def update_size(*args):
-                new_text = text_widget.get("1.0", tk.END).strip()
-                new_size = len(new_text.encode('cp949', errors='ignore'))
-                size_diff = new_size - len(original_text.encode('cp949'))
-                
-                if size_diff > 0:
-                    size_label.config(
-                        text=f"새 크기: {new_size} 바이트 (+{size_diff} 바이트) - 자동으로 처리됩니다",
-                        foreground="green"
-                    )
-                else:
-                    size_label.config(
-                        text=f"새 크기: {new_size} 바이트 ({size_diff} 바이트)",
-                        foreground="black"
-                    )
-            
-            text_widget.bind('<KeyRelease>', update_size)
-            update_size()
-            
-            # Buttons
-            button_frame = ttk.Frame(dialog)
-            button_frame.pack(fill=tk.X, pady=(10, 0))
-            
-            def save_caption():
-                new_text = text_widget.get("1.0", tk.END).strip()
-                
-                if new_text and new_text != original_text:
-                    if resource_name not in self.modifications:
-                        self.modifications[resource_name] = {}
-                    self.modifications[resource_name][original_text] = new_text
-                    
-                    self.status_var.set(f"캡션 수정됨: {original_text} → {new_text}")
-                    dialog.destroy()
-                    
-                    # Refresh
-                    self.on_resource_select(None)
-                else:
-                    dialog.destroy()
-            
-            ttk.Button(button_frame, text="취소", command=dialog.destroy).pack(side=tk.RIGHT, padx=(5, 0))
-            ttk.Button(button_frame, text="저장", command=save_caption).pack(side=tk.RIGHT)
-    
-    def translate_all_unlimited(self):
-        """모든 Caption API 번역 - 자동 감지 및 번역"""
+    def translate_all_resources(self):
+        """모든 리소스 번역 - String Table + DFM"""
         if not self.api_key:
             messagebox.showwarning("API Key 필요", "먼저 API 키를 설정해주세요.")
             self.set_api_key()
             if not self.api_key:
                 return
         
-        # 영어 텍스트인지 확인하는 함수
-        def is_english_text(text):
-            # 기본 ASCII 문자가 80% 이상이고, 한글이 없으면 영어로 간주
-            if not text or len(text.strip()) == 0:
-                return False
-            
-            # 숫자만 있는 경우 제외
-            if text.strip().isdigit():
-                return False
-            
-            ascii_count = sum(1 for c in text if ord(c) < 128)
-            korean_count = sum(1 for c in text if '\uac00' <= c <= '\ud7a3')
-            
-            # 한글이 있으면 이미 번역된 것으로 간주
-            if korean_count > 0:
-                return False
-            
-            # ASCII 비율이 80% 이상이고 알파벳이 포함되어 있으면 영어로 간주
-            has_alpha = any(c.isalpha() for c in text)
-            return ascii_count / len(text) > 0.8 and has_alpha
-        
+        # 번역할 텍스트 수집
         to_translate = []
-        caption_map = {}
+        text_map = {}  # {text: [(type, id)]}
         
-        # 모든 영어 caption 수집
-        for resource in self.resources:
+        # String Table 텍스트 수집
+        for (block_id, lang_id), strings in self.string_tables.items():
+            for string_id, text in strings.items():
+                if self._is_english_text(text) and string_id not in self.string_modifications:
+                    if text not in to_translate:
+                        to_translate.append(text)
+                    if text not in text_map:
+                        text_map[text] = []
+                    text_map[text].append(('string', string_id))
+        
+        # DFM 캡션 수집
+        for resource in self.rcdata_resources:
             for caption in resource['captions']:
-                if is_english_text(caption.text):
-                    # 이미 번역된 것 제외
+                if self._is_english_text(caption.text):
                     already_translated = False
-                    if resource['name'] in self.modifications:
-                        if caption.text in self.modifications[resource['name']]:
+                    if resource['name'] in self.rcdata_modifications:
+                        if caption.text in self.rcdata_modifications[resource['name']]:
                             already_translated = True
                     
                     if not already_translated:
                         if caption.text not in to_translate:
                             to_translate.append(caption.text)
-                        
-                        if caption.text not in caption_map:
-                            caption_map[caption.text] = []
-                        caption_map[caption.text].append(resource['name'])
+                        if caption.text not in text_map:
+                            text_map[caption.text] = []
+                        text_map[caption.text].append(('dfm', resource['name']))
         
         if not to_translate:
             messagebox.showinfo("정보", "번역할 영어 텍스트가 없습니다.")
             return
         
-        # 진행 상황 표시
+        # 확인 대화상자
         if messagebox.askyesno("번역 확인", 
-                             f"{len(to_translate)}개의 영어 텍스트를 발견했습니다.\n\n"
-                             f"예시:\n"
-                             f"• {to_translate[0] if to_translate else ''}\n"
-                             f"• {to_translate[1] if len(to_translate) > 1 else ''}\n"
-                             f"• {to_translate[2] if len(to_translate) > 2 else ''}\n\n"
+                             f"총 {len(to_translate)}개의 영어 텍스트를 발견했습니다.\n\n"
+                             f"String Table: {sum(1 for t in text_map.values() for item in t if item[0] == 'string')}개\n"
+                             f"DFM Caption: {sum(1 for t in text_map.values() for item in t if item[0] == 'dfm')}개\n\n"
                              "API를 사용하여 모두 한국어로 번역하시겠습니까?"):
             
             # Progress dialog
             progress = tk.Toplevel(self.root)
-            progress.title("API 번역 진행 중")
-            progress.geometry("500x300")
+            progress.title("통합 번역 진행 중")
+            progress.geometry("600x400")
             progress.transient(self.root)
             progress.grab_set()
             
-            ttk.Label(progress, text="영어 텍스트를 한국어로 번역 중...").pack(pady=10)
+            ttk.Label(progress, text="String Table과 DFM 리소스를 번역 중...").pack(pady=10)
             
             progress_var = tk.DoubleVar()
             progress_bar = ttk.Progressbar(progress, variable=progress_var, maximum=len(to_translate))
             progress_bar.pack(fill=tk.X, padx=20, pady=10)
             
-            log_text = scrolledtext.ScrolledText(progress, height=10)
+            log_text = scrolledtext.ScrolledText(progress, height=15)
             log_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
             
             def translate_worker():
                 try:
                     # Batch translate
                     batch_size = 10
+                    string_translated = 0
+                    dfm_translated = 0
                     
                     for i in range(0, len(to_translate), batch_size):
                         batch = to_translate[i:i+batch_size]
@@ -1447,35 +1406,45 @@ class UnlimitedCaptionTranslatorGUI:
                         # API call
                         translations = self.call_translation_api(batch)
                         
-                        # Apply
+                        # Apply translations
                         for text, translation in translations.items():
-                            for resource_name in caption_map[text]:
-                                if resource_name not in self.modifications:
-                                    self.modifications[resource_name] = {}
-                                self.modifications[resource_name][text] = translation
+                            if text in text_map:
+                                for type_name, id_val in text_map[text]:
+                                    if type_name == 'string':
+                                        self.string_modifications[id_val] = translation
+                                        string_translated += 1
+                                        log_text.insert(tk.END, f"[String {id_val}] {text} → {translation}\n")
+                                    elif type_name == 'dfm':
+                                        if id_val not in self.rcdata_modifications:
+                                            self.rcdata_modifications[id_val] = {}
+                                        self.rcdata_modifications[id_val][text] = translation
+                                        dfm_translated += 1
+                                        log_text.insert(tk.END, f"[DFM {id_val}] {text} → {translation}\n")
                             
-                            log_text.insert(tk.END, f"{text} → {translation}\n")
                             log_text.see(tk.END)
                         
                         progress_var.set(min(i + batch_size, len(to_translate)))
                         progress.update()
                     
                     messagebox.showinfo("번역 완료", 
-                                      f"{len(to_translate)}개의 텍스트를 번역했습니다!\n"
-                                      "모든 번역이 전체 길이로 보존됩니다.")
+                                      f"번역이 완료되었습니다!\n\n"
+                                      f"String Table: {string_translated}개 번역됨\n"
+                                      f"DFM Caption: {dfm_translated}개 번역됨\n"
+                                      f"총 {string_translated + dfm_translated}개 항목 번역")
                     
                 except Exception as e:
                     messagebox.showerror("오류", str(e))
                 finally:
                     progress.destroy()
-                    self.on_resource_select(None)
+                    self.refresh_all_views()
+                    self.update_summary()
             
             # Start translation
             thread = threading.Thread(target=translate_worker, daemon=True)
             thread.start()
     
     def call_translation_api(self, texts):
-        """Call translation API - 개선된 버전"""
+        """Call translation API"""
         translations = {}
         
         try:
@@ -1484,37 +1453,27 @@ class UnlimitedCaptionTranslatorGUI:
                 "Content-Type": "application/json"
             }
             
-            # 더 명확한 프롬프트
-            prompt = "다음 Windows 프로그램 UI 텍스트들을 자연스러운 한국어로 번역해주세요.\n"
-            prompt += "각 텍스트는 메뉴, 버튼, 라벨 등의 UI 요소입니다.\n"
+            prompt = "다음 Windows 프로그램의 텍스트들을 자연스러운 한국어로 번역해주세요.\n"
+            prompt += "String Table 메시지와 UI Caption이 섞여 있습니다.\n"
             prompt += "간결하고 명확한 한국어로 번역해주세요.\n\n"
             
-            # 번역할 텍스트 목록
-            text_list = {}
             for i, text in enumerate(texts, 1):
-                key = f"text{i}"
-                text_list[key] = text
-                prompt += f"{key}: {text}\n"
+                prompt += f"text{i}: {text}\n"
             
-            prompt += "\n다음 JSON 형식으로 응답해주세요:\n"
-            prompt += '{"text1": "번역1", "text2": "번역2", ...}'
+            prompt += "\nJSON 형식으로 응답: {\"text1\": \"번역1\", ...}"
             
             data = {
                 "model": "gpt-3.5-turbo",
                 "messages": [
                     {
-                        "role": "system", 
-                        "content": "당신은 Windows 프로그램 UI 전문 번역가입니다. "
-                                  "영어 UI 텍스트를 자연스럽고 표준적인 한국어로 번역합니다. "
-                                  "Microsoft Windows의 한국어 번역 스타일을 따릅니다."
+                        "role": "system",
+                        "content": "Windows 프로그램 UI/메시지 번역 전문가입니다."
                     },
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.3,
                 "max_tokens": 2000
             }
-            
-            print(f"API 호출 중... {len(texts)}개 텍스트 번역")
             
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -1527,70 +1486,23 @@ class UnlimitedCaptionTranslatorGUI:
                 result = response.json()
                 content = result['choices'][0]['message']['content']
                 
-                print(f"API 응답: {content[:200]}...")  # 디버깅용
-                
-                # JSON 파싱 개선
-                try:
-                    # JSON 부분만 추출
-                    import re
-                    json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
-                    if json_match:
-                        json_str = json_match.group()
-                        parsed = json.loads(json_str)
-                        
-                        # 매핑 복원
-                        for i, text in enumerate(texts, 1):
-                            key = f"text{i}"
-                            if key in parsed:
-                                translations[text] = parsed[key]
-                                print(f"번역됨: {text} → {parsed[key]}")
-                            else:
-                                # 키가 없으면 원본 유지
-                                translations[text] = text
-                    else:
-                        # JSON을 찾을 수 없으면 다른 방식 시도
-                        lines = content.strip().split('\n')
-                        for i, text in enumerate(texts):
-                            for line in lines:
-                                if text in line and ':' in line:
-                                    # "text: translation" 형식 파싱
-                                    parts = line.split(':', 1)
-                                    if len(parts) == 2:
-                                        translation = parts[1].strip().strip('"').strip("'")
-                                        translations[text] = translation
-                                        break
-                            
-                            if text not in translations:
-                                translations[text] = text
-                                
-                except json.JSONDecodeError as e:
-                    print(f"JSON 파싱 오류: {e}")
-                    # 파싱 실패시 원본 유지
-                    for text in texts:
-                        translations[text] = text
-                        
-            elif response.status_code == 401:
-                raise Exception("API 키가 유효하지 않습니다.")
-            elif response.status_code == 429:
-                raise Exception("API 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.")
-            else:
-                raise Exception(f"API 오류: {response.status_code} - {response.text}")
-                
-        except requests.exceptions.Timeout:
-            print("API 요청 시간 초과")
-            # 타임아웃시 원본 유지
-            for text in texts:
-                translations[text] = text
-                
+                # Parse JSON
+                import re
+                json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+                if json_match:
+                    parsed = json.loads(json_match.group())
+                    
+                    for i, text in enumerate(texts, 1):
+                        key = f"text{i}"
+                        if key in parsed:
+                            translations[text] = parsed[key]
+                        else:
+                            translations[text] = text
+            
         except Exception as e:
-            print(f"API 오류: {e}")
-            # 오류시 원본 유지
+            print(f"API error: {e}")
             for text in texts:
                 translations[text] = text
-        
-        # 번역 결과 검증
-        success_count = sum(1 for orig, trans in translations.items() if orig != trans)
-        print(f"번역 완료: {success_count}/{len(texts)}개 성공")
         
         return translations
     
@@ -1598,11 +1510,11 @@ class UnlimitedCaptionTranslatorGUI:
         """Set API key"""
         dialog = tk.Toplevel(self.root)
         dialog.title("API 키 설정")
-        dialog.geometry("500x200")
+        dialog.geometry("500x150")
         dialog.transient(self.root)
         dialog.grab_set()
         
-        ttk.Label(dialog, text="OpenAI API 키를 입력하세요:").pack(pady=10)
+        ttk.Label(dialog, text="OpenAI API 키:").pack(pady=10)
         
         api_var = tk.StringVar(value=self.api_key)
         entry = ttk.Entry(dialog, textvariable=api_var, width=50, show="*")
@@ -1614,239 +1526,202 @@ class UnlimitedCaptionTranslatorGUI:
         
         ttk.Button(dialog, text="저장", command=save).pack(pady=10)
     
-    def show_size_report(self):
-        """Show size change report"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("번역 크기 보고서")
-        dialog.geometry("800x600")
-        dialog.transient(self.root)
+    def refresh_all_views(self):
+        """모든 뷰 새로고침"""
+        # Refresh String Table tree
+        for item in self.string_tree.get_children():
+            block_node = item
+            for child in self.string_tree.get_children(block_node):
+                values = self.string_tree.item(child)['values']
+                tags = self.string_tree.item(child)['tags']
+                if tags:
+                    string_id = tags[0]
+                    if string_id in self.string_modifications:
+                        new_values = list(values)
+                        new_values[2] = self.string_modifications[string_id]
+                        new_values[3] = "번역됨"
+                        self.string_tree.item(child, values=new_values)
         
-        # Create report
-        report_text = scrolledtext.ScrolledText(dialog, font=("Courier", 10))
-        report_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        report = "무제한 번역 크기 보고서\n"
-        report += "=" * 80 + "\n\n"
-        
-        total_original = 0
-        total_translated = 0
-        expandable_count = 0
-        fixed_count = 0
-        
-        for resource in self.resources:
-            if resource['captions']:
-                report += f"\n리소스: {resource['name']}\n"
-                report += "-" * 40 + "\n"
-                
-                for caption in resource['captions']:
-                    translation = caption.text
-                    
-                    if resource['name'] in self.modifications:
-                        if caption.text in self.modifications[resource['name']]:
-                            translation = self.modifications[resource['name']][caption.text]
-                    
-                    if translation != caption.text:
-                        orig_size = len(caption.text.encode('cp949', errors='ignore'))
-                        trans_size = len(translation.encode('cp949', errors='ignore'))
-                        
-                        total_original += orig_size
-                        total_translated += trans_size
-                        
-                        if caption.can_expand:
-                            expandable_count += 1
-                            status = "[확장가능]"
-                        else:
-                            fixed_count += 1
-                            status = "[고정크기]"
-                        
-                        report += f"  '{caption.text}' ({orig_size}b) → '{translation}' ({trans_size}b) {status}"
-                        
-                        if trans_size > orig_size:
-                            report += f" [+{trans_size - orig_size} 바이트]"
-                        
-                        report += "\n"
-        
-        report += "\n" + "=" * 80 + "\n"
-        report += f"원본 총 크기: {total_original} 바이트\n"
-        report += f"번역 총 크기: {total_translated} 바이트\n"
-        report += f"총 증가량: {total_translated - total_original} 바이트\n"
-        report += f"확장 가능한 캡션: {expandable_count}개\n"
-        report += f"고정 크기 캡션: {fixed_count}개\n"
-        report += "\n확장 가능한 캡션은 자동으로 크기가 조정됩니다.\n"
-        report += "고정 크기 캡션은 필요시 잘립니다."
-        
-        report_text.insert(1.0, report)
-        
-        ttk.Button(dialog, text="닫기", command=dialog.destroy).pack(pady=10)
+        # Refresh caption view if selected
+        self.on_resource_select(None)
     
-    def clear_modifications(self):
-        """Clear modifications"""
-        if self.modifications:
+    def update_summary(self):
+        """번역 요약 업데이트"""
+        self.summary_text.delete(1.0, tk.END)
+        
+        summary = "통합 번역 요약\n"
+        summary += "=" * 80 + "\n\n"
+        
+        # String Table 요약
+        summary += "[ String Table ]\n"
+        summary += "-" * 40 + "\n"
+        total_strings = sum(len(strings) for strings in self.string_tables.values())
+        translated_strings = len(self.string_modifications)
+        summary += f"총 문자열: {total_strings}개\n"
+        summary += f"번역된 문자열: {translated_strings}개\n"
+        summary += f"번역률: {translated_strings/total_strings*100:.1f}%\n\n" if total_strings > 0 else "\n"
+        
+        # 번역 예시
+        if self.string_modifications:
+            summary += "번역 예시:\n"
+            for i, (string_id, translation) in enumerate(list(self.string_modifications.items())[:5]):
+                # Find original
+                original = ""
+                for strings in self.string_tables.values():
+                    if string_id in strings:
+                        original = strings[string_id]
+                        break
+                summary += f"  {original} → {translation}\n"
+            summary += "\n"
+        
+        # DFM Resources 요약
+        summary += "[ DFM Resources ]\n"
+        summary += "-" * 40 + "\n"
+        total_captions = sum(len(r['captions']) for r in self.rcdata_resources)
+        translated_captions = sum(len(mods) for mods in self.rcdata_modifications.values())
+        summary += f"총 리소스: {len(self.rcdata_resources)}개\n"
+        summary += f"총 캡션: {total_captions}개\n"
+        summary += f"번역된 캡션: {translated_captions}개\n"
+        summary += f"번역률: {translated_captions/total_captions*100:.1f}%\n\n" if total_captions > 0 else "\n"
+        
+        # 번역 예시
+        if self.rcdata_modifications:
+            summary += "번역 예시:\n"
+            count = 0
+            for resource_name, translations in self.rcdata_modifications.items():
+                for original, translated in list(translations.items())[:5]:
+                    summary += f"  [{resource_name}] {original} → {translated}\n"
+                    count += 1
+                    if count >= 5:
+                        break
+                if count >= 5:
+                    break
+        
+        self.summary_text.insert(1.0, summary)
+    
+    def clear_all_modifications(self):
+        """모든 번역 초기화"""
+        if self.string_modifications or self.rcdata_modifications:
             if messagebox.askyesno("확인", "모든 번역을 초기화하시겠습니까?"):
-                self.modifications.clear()
-                self.on_resource_select(None)
+                self.string_modifications.clear()
+                self.rcdata_modifications.clear()
+                self.refresh_all_views()
+                self.update_summary()
                 self.status_var.set("번역 초기화됨")
     
-    def verify_structure(self):
-        """Verify DFM structure"""
-        issues = []
-        
-        for resource in self.resources:
-            if resource['name'] in self.modifications:
-                try:
-                    # Test restructuring
-                    translations = {}
-                    if resource['name'] in self.modifications:
-                        translations.update(self.modifications[resource['name']])
-                    
-                    # Only test if there are translations
-                    if translations:
-                        # Test restructure
-                        new_data = self.restructurer.restructure_with_translations(
-                            resource['data'], 
-                            translations
-                        )
-                        
-                        # Re-parse
-                        new_captions = self.parser.find_all_captions(new_data)
-                        
-                        # Compare
-                        if len(new_captions) != len(resource['captions']):
-                            issues.append(f"{resource['name']}: Caption count changed ({len(resource['captions'])} → {len(new_captions)})")
-                    
-                except Exception as e:
-                    issues.append(f"{resource['name']}: {str(e)}")
-        
-        if issues:
-            messagebox.showwarning("구조 문제 발견", 
-                                 "다음 문제가 발견되었습니다:\n\n" + "\n".join(issues[:10]))
-        else:
-            messagebox.showinfo("구조 검증 완료", 
-                              "모든 DFM 구조가 정상입니다!\n"
-                              "번역을 안전하게 적용할 수 있습니다.")
-    
-    def apply_unlimited_modifications(self):
-        """Apply modifications with DFM restructuring"""
-        if not self.modifications:
-            messagebox.showinfo("정보", "적용할 변경사항이 없습니다.")
+    def apply_all_translations(self):
+        """모든 번역 적용"""
+        if not self.string_modifications and not self.rcdata_modifications:
+            messagebox.showinfo("정보", "적용할 번역이 없습니다.")
             return
         
-        total_changes = sum(len(changes) for changes in self.modifications.values())
+        total_changes = len(self.string_modifications) + sum(len(m) for m in self.rcdata_modifications.values())
         
-        # Confirmation
-        if not messagebox.askyesno("번역 적용 확인",
-                                 f"{total_changes}개의 번역을 적용하시겠습니까?\n\n"
-                                 "다음 작업이 수행됩니다:\n"
-                                 "• 모든 번역 길이 보존\n"
-                                 "• 필요시 DFM 파일 재구성\n"
-                                 "• 자동 문자열 타입 변환\n\n"
-                                 "백업이 자동으로 생성됩니다."):
+        if not messagebox.askyesno("번역 적용", 
+                                 f"총 {total_changes}개의 번역을 적용하시겠습니까?\n\n"
+                                 f"String Table: {len(self.string_modifications)}개\n"
+                                 f"DFM Caption: {sum(len(m) for m in self.rcdata_modifications.values())}개\n\n"
+                                 "백업을 먼저 생성하는 것을 권장합니다."):
             return
         
         try:
-            # Auto backup
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = f"{self.file_path}.pre_unlimited_{timestamp}"
-            
-            self.status_var.set("백업 생성 중...")
-            shutil.copy2(self.file_path, backup_path)
-            
             # Close PE
             if self.pe:
                 self.pe.close()
                 self.pe = None
             
-            time.sleep(0.3)
-            
             # Begin update
             self.status_var.set("번역 적용 중...")
             h_update = kernel32.BeginUpdateResourceW(self.file_path, False)
             if not h_update:
-                error_code = kernel32.GetLastError()
-                raise Exception(f"리소스 업데이트를 시작할 수 없습니다. 오류 코드: {error_code}")
+                raise Exception("리소스 업데이트 시작 실패")
             
             success_count = 0
-            failed_count = 0
             
-            # Update each resource
-            for resource in self.resources:
-                if resource['name'] in self.modifications:
-                    try:
-                        # Build translation map
-                        translations = {}
+            # Apply String Table modifications
+            for (block_id, lang_id), strings in self.string_tables.items():
+                # Build new string table with translations
+                new_strings = {}
+                modified = False
+                
+                for string_id, original in strings.items():
+                    if string_id in self.string_modifications:
+                        new_strings[string_id] = self.string_modifications[string_id]
+                        modified = True
+                    else:
+                        new_strings[string_id] = original
+                
+                if modified:
+                    # Build new string table data
+                    new_data = self.string_parser.build_string_table(new_strings, block_id)
+                    
+                    # Update resource
+                    data_buffer = ctypes.create_string_buffer(new_data)
+                    
+                    if kernel32.UpdateResourceW(
+                        h_update,
+                        MAKEINTRESOURCE(RT_STRING),
+                        MAKEINTRESOURCE(block_id),
+                        lang_id,
+                        data_buffer,
+                        len(new_data)
+                    ):
+                        success_count += 1
+            
+            # Apply DFM modifications
+            for resource in self.rcdata_resources:
+                if resource['name'] in self.rcdata_modifications:
+                    # Build translation map
+                    translations = self.rcdata_modifications[resource['name']]
+                    
+                    # Create restructured data
+                    if translations:
+                        self.status_var.set(f"{resource['name']} 재구성 중...")
+                        restructured_data = self.dfm_restructurer.restructure_with_translations(
+                            resource['data'], 
+                            translations
+                        )
                         
-                        # Add modifications
-                        if resource['name'] in self.modifications:
-                            translations.update(self.modifications[resource['name']])
+                        # Prepare parameters
+                        if resource['name'].startswith('ID_'):
+                            resource_id = int(resource['name'][3:])
+                            resource_param = MAKEINTRESOURCE(resource_id)
+                        else:
+                            resource_param = ctypes.c_wchar_p(resource['name'])
                         
-                        # Create restructured data only if there are translations
-                        if translations:
-                            self.status_var.set(f"{resource['name']} 재구성 중...")
-                            restructured_data = self.restructurer.restructure_with_translations(
-                                resource['data'], 
-                                translations
-                            )
-                            
-                            # Log size change
-                            size_change = len(restructured_data) - len(resource['data'])
-                            if size_change != 0:
-                                print(f"{resource['name']}: 크기가 {size_change:+} 바이트 변경됨")
-                            
-                            # Prepare parameters
-                            if resource['name'].startswith('ID_'):
-                                resource_id = int(resource['name'][3:])
-                                resource_param = MAKEINTRESOURCE(resource_id)
-                            else:
-                                resource_param = ctypes.c_wchar_p(resource['name'])
-                            
-                            language = int(resource['language'][2:], 16)
-                            
-                            # Update
-                            data_buffer = ctypes.create_string_buffer(restructured_data)
-                            
-                            if kernel32.UpdateResourceW(
-                                h_update,
-                                MAKEINTRESOURCE(RT_RCDATA),
-                                resource_param,
-                                language,
-                                data_buffer,
-                                len(restructured_data)
-                            ):
-                                success_count += 1
-                            else:
-                                failed_count += 1
-                                error_code = kernel32.GetLastError()
-                                print(f"{resource['name']} 업데이트 실패: 오류 {error_code}")
+                        language = int(resource['language'][2:], 16)
                         
-                    except Exception as e:
-                        failed_count += 1
-                        print(f"{resource['name']} 업데이트 중 오류: {str(e)}")
+                        # Update
+                        data_buffer = ctypes.create_string_buffer(restructured_data)
+                        
+                        if kernel32.UpdateResourceW(
+                            h_update,
+                            MAKEINTRESOURCE(RT_RCDATA),
+                            resource_param,
+                            language,
+                            data_buffer,
+                            len(restructured_data)
+                        ):
+                            success_count += 1
             
             # Commit
-            self.status_var.set("변경사항 커밋 중...")
             if not kernel32.EndUpdateResourceW(h_update, False):
-                error_code = kernel32.GetLastError()
-                raise Exception(f"리소스 업데이트를 커밋할 수 없습니다. 오류 코드: {error_code}")
+                raise Exception("리소스 업데이트 커밋 실패")
             
-            # Report
-            msg = f"{success_count}개의 리소스를 성공적으로 업데이트했습니다.\n"
-            if failed_count > 0:
-                msg += f"실패: {failed_count}개 리소스\n"
-            msg += f"\n백업 파일: {os.path.basename(backup_path)}"
-            
-            messagebox.showinfo("성공", msg)
+            messagebox.showinfo("성공", 
+                              f"{success_count}개 리소스가 업데이트되었습니다.\n\n"
+                              "번역이 성공적으로 적용되었습니다.")
             
             # Reload
-            self.modifications.clear()
-            self.load_resources()
+            self.string_modifications.clear()
+            self.rcdata_modifications.clear()
+            self.load_all_resources()
             
         except Exception as e:
-            self.status_var.set("번역 적용 오류")
-            messagebox.showerror("오류", 
-                               f"번역 적용 실패:\n{str(e)}\n\n"
-                               "백업에서 복원하세요.")
+            self.status_var.set("적용 실패")
+            messagebox.showerror("오류", f"번역 적용 실패: {str(e)}")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = UnlimitedCaptionTranslatorGUI(root)
+    app = UniversalResourceTranslatorGUI(root)
     root.mainloop()
