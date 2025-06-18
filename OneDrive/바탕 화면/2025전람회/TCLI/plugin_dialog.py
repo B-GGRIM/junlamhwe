@@ -10,17 +10,20 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 from plugin_interface import TranslatorPlugin
 
-# 캐시 시스템 (선택사항)
-CACHE_ENABLED = False
+# 캐시 시스템 import 시도
 try:
     from translation_cache import get_translation_cache
     CACHE_ENABLED = True
 except ImportError:
-    # 캐시 없이도 정상 작동
-    pass
+    CACHE_ENABLED = False
 
 # Windows API constants
 RT_DIALOG = 5
+
+# Language IDs
+LANG_ENGLISH_US = 1033  # 0x0409
+LANG_KOREAN = 1042      # 0x0412
+LANG_NEUTRAL = 0        # 0x0000
 
 # Dialog styles
 DS_SETFONT = 0x40
@@ -75,6 +78,7 @@ class DialogControl:
     style: int
     ex_style: int
     text_position: int = 0
+    creation_data: bytes = b""
 
 @dataclass
 class DialogInfo:
@@ -85,12 +89,18 @@ class DialogInfo:
     has_font: bool = False
     font_name: str = ""
     font_size: int = 0
+    font_weight: int = 400
+    font_italic: int = 0
+    font_charset: int = 1
     x: int = 0
     y: int = 0
     cx: int = 0
     cy: int = 0
     style: int = 0
     ex_style: int = 0
+    help_id: int = 0
+    menu_resource: any = None
+    window_class: any = None
     raw_data: bytes = b""
     is_extended: bool = False
     item_count: int = 0
@@ -100,7 +110,7 @@ class DialogInfo:
             self.controls = []
 
 class SafeDialogParser:
-    """Safe dialog parser"""
+    """Safe dialog parser with better structure preservation"""
     
     def __init__(self):
         self.control_classes = {
@@ -117,6 +127,9 @@ class SafeDialogParser:
         try:
             pos = 0
             
+            # Save original data
+            original_data = data
+            
             # Detect dialog type
             first_dword = struct.unpack('<I', data[pos:pos+4])[0]
             
@@ -127,74 +140,74 @@ class SafeDialogParser:
                 if signature == 0xFFFF and dlg_ver == 1:
                     is_extended = True
             
+            dialog_info = DialogInfo(
+                title="",
+                raw_data=original_data,
+                is_extended=is_extended
+            )
+            
             # Parse header
             if is_extended:
+                # DLGTEMPLATEEX
                 pos += 2  # dlgVer
                 pos += 2  # signature
-                help_id = struct.unpack('<I', data[pos:pos+4])[0]
+                dialog_info.help_id = struct.unpack('<I', data[pos:pos+4])[0]
                 pos += 4
-                ex_style = struct.unpack('<I', data[pos:pos+4])[0]
+                dialog_info.ex_style = struct.unpack('<I', data[pos:pos+4])[0]
                 pos += 4
-                style = struct.unpack('<I', data[pos:pos+4])[0]
+                dialog_info.style = struct.unpack('<I', data[pos:pos+4])[0]
                 pos += 4
             else:
-                style = struct.unpack('<I', data[pos:pos+4])[0]
+                # DLGTEMPLATE
+                dialog_info.style = struct.unpack('<I', data[pos:pos+4])[0]
                 pos += 4
-                ex_style = struct.unpack('<I', data[pos:pos+4])[0]
+                dialog_info.ex_style = struct.unpack('<I', data[pos:pos+4])[0]
                 pos += 4
             
             # Number of items
-            item_count = struct.unpack('<H', data[pos:pos+2])[0]
+            dialog_info.item_count = struct.unpack('<H', data[pos:pos+2])[0]
             pos += 2
             
             # Position and size
-            x = struct.unpack('<h', data[pos:pos+2])[0]
+            dialog_info.x = struct.unpack('<h', data[pos:pos+2])[0]
             pos += 2
-            y = struct.unpack('<h', data[pos:pos+2])[0]
+            dialog_info.y = struct.unpack('<h', data[pos:pos+2])[0]
             pos += 2
-            cx = struct.unpack('<h', data[pos:pos+2])[0]
+            dialog_info.cx = struct.unpack('<h', data[pos:pos+2])[0]
             pos += 2
-            cy = struct.unpack('<h', data[pos:pos+2])[0]
+            dialog_info.cy = struct.unpack('<h', data[pos:pos+2])[0]
             pos += 2
             
             # Menu
             menu_info = self._read_sz_or_ord_array(data, pos)
+            dialog_info.menu_resource = menu_info[0]
             pos = menu_info[1]
             
             # Window class
             class_info = self._read_sz_or_ord_array(data, pos)
+            dialog_info.window_class = class_info[0]
             pos = class_info[1]
             
             # Title
-            title_position = pos
+            dialog_info.title_position = pos
             title_info = self._read_sz_or_ord_array(data, pos)
-            title = title_info[0] if isinstance(title_info[0], str) else ""
+            dialog_info.title = title_info[0] if isinstance(title_info[0], str) else ""
             pos = title_info[1]
             
-            dialog_info = DialogInfo(
-                title=title,
-                title_position=title_position,
-                has_font=bool(style & DS_SETFONT),
-                x=x, y=y, cx=cx, cy=cy,
-                style=style, ex_style=ex_style,
-                raw_data=data,
-                is_extended=is_extended,
-                item_count=item_count
-            )
+            dialog_info.has_font = bool(dialog_info.style & DS_SETFONT)
             
             # Font info
-            if style & DS_SETFONT:
+            if dialog_info.style & DS_SETFONT:
                 if pos + 2 <= len(data):
-                    font_size = struct.unpack('<H', data[pos:pos+2])[0]
+                    dialog_info.font_size = struct.unpack('<H', data[pos:pos+2])[0]
                     pos += 2
-                    dialog_info.font_size = font_size
                     
                     if is_extended and pos + 4 <= len(data):
-                        weight = struct.unpack('<H', data[pos:pos+2])[0]
+                        dialog_info.font_weight = struct.unpack('<H', data[pos:pos+2])[0]
                         pos += 2
-                        italic = data[pos]
+                        dialog_info.font_italic = data[pos]
                         pos += 1
-                        charset = data[pos]
+                        dialog_info.font_charset = data[pos]
                         pos += 1
                     
                     font_info = self._read_sz_or_ord_array(data, pos)
@@ -206,7 +219,7 @@ class SafeDialogParser:
             pos = (pos + 3) & ~3
             
             # Parse controls
-            for i in range(item_count):
+            for i in range(dialog_info.item_count):
                 pos = (pos + 3) & ~3
                 
                 if pos >= len(data):
@@ -311,7 +324,9 @@ class SafeDialogParser:
             if pos + 2 <= len(data):
                 creation_data_size = struct.unpack('<H', data[pos:pos+2])[0]
                 pos += 2
-                pos += creation_data_size
+                if creation_data_size > 0 and pos + creation_data_size <= len(data):
+                    control.creation_data = data[pos:pos+creation_data_size]
+                    pos += creation_data_size
             
             return (control, pos)
             
@@ -369,10 +384,23 @@ class SafeDialogRebuilder:
     def __init__(self):
         self.parser = SafeDialogParser()
     
-    def rebuild_dialog_complete(self, dialog_info: DialogInfo, translations: Dict[str, str]) -> bytes:
-        """Complete dialog rebuild with proper structure"""
+    def rebuild_dialog_with_translations(self, dialog_info: DialogInfo, translations: Dict[str, str]) -> bytes:
+        """Rebuild dialog with translations, preserving exact structure"""
         try:
-            # Start building new dialog
+            # If no translations needed, return original
+            needs_translation = False
+            if dialog_info.title and dialog_info.title in translations:
+                needs_translation = True
+            else:
+                for control in dialog_info.controls:
+                    if control.text and control.text in translations:
+                        needs_translation = True
+                        break
+            
+            if not needs_translation:
+                return dialog_info.raw_data
+            
+            # Build new dialog data
             new_data = bytearray()
             
             # Write header
@@ -380,7 +408,7 @@ class SafeDialogRebuilder:
                 # DLGTEMPLATEEX
                 new_data.extend(struct.pack('<H', 1))  # dlgVer
                 new_data.extend(struct.pack('<H', 0xFFFF))  # signature
-                new_data.extend(struct.pack('<I', 0))  # helpID
+                new_data.extend(struct.pack('<I', dialog_info.help_id))
                 new_data.extend(struct.pack('<I', dialog_info.ex_style))
                 new_data.extend(struct.pack('<I', dialog_info.style))
             else:
@@ -397,13 +425,13 @@ class SafeDialogRebuilder:
             new_data.extend(struct.pack('<h', dialog_info.cx))
             new_data.extend(struct.pack('<h', dialog_info.cy))
             
-            # Menu (no menu)
-            new_data.extend(b'\x00\x00')
+            # Menu
+            self._write_sz_or_ord(new_data, dialog_info.menu_resource)
             
-            # Window class (default)
-            new_data.extend(b'\x00\x00')
+            # Window class
+            self._write_sz_or_ord(new_data, dialog_info.window_class)
             
-            # Title
+            # Title (with translation)
             title_text = translations.get(dialog_info.title, dialog_info.title) if dialog_info.title else ""
             self._write_unicode_string(new_data, title_text)
             
@@ -411,9 +439,9 @@ class SafeDialogRebuilder:
             if dialog_info.has_font:
                 new_data.extend(struct.pack('<H', dialog_info.font_size))
                 if dialog_info.is_extended:
-                    new_data.extend(struct.pack('<H', 400))  # weight
-                    new_data.extend(b'\x00')  # italic
-                    new_data.extend(b'\x01')  # charset
+                    new_data.extend(struct.pack('<H', dialog_info.font_weight))
+                    new_data.append(dialog_info.font_italic)
+                    new_data.append(dialog_info.font_charset)
                 self._write_unicode_string(new_data, dialog_info.font_name)
             
             # Align to DWORD
@@ -454,22 +482,25 @@ class SafeDialogRebuilder:
                     new_data.extend(b'\xFF\xFF')
                     new_data.extend(struct.pack('<H', class_id))
                 else:
-                    # String (shouldn't happen for standard controls)
                     self._write_unicode_string(new_data, control.control_class)
                 
-                # Control text
+                # Control text (with translation)
                 if control.text.startswith("ResID_"):
                     # Resource ID
                     res_id = int(control.text.split('_')[1])
                     new_data.extend(b'\xFF\xFF')
                     new_data.extend(struct.pack('<H', res_id))
                 else:
-                    # Text string
-                    text = translations.get(control.text, control.text)
+                    # Text string with translation
+                    text = translations.get(control.text, control.text) if control.text else ""
                     self._write_unicode_string(new_data, text)
                 
-                # Creation data (none)
-                new_data.extend(struct.pack('<H', 0))
+                # Creation data
+                if control.creation_data:
+                    new_data.extend(struct.pack('<H', len(control.creation_data)))
+                    new_data.extend(control.creation_data)
+                else:
+                    new_data.extend(struct.pack('<H', 0))
             
             return bytes(new_data)
             
@@ -477,6 +508,18 @@ class SafeDialogRebuilder:
             print(f"Dialog rebuild error: {e}")
             # Return original data on error
             return dialog_info.raw_data
+    
+    def _write_sz_or_ord(self, data: bytearray, value: any):
+        """Write sz_Or_Ord value"""
+        if value is None:
+            data.extend(b'\x00\x00')
+        elif isinstance(value, int):
+            data.extend(b'\xFF\xFF')
+            data.extend(struct.pack('<H', value))
+        elif isinstance(value, str):
+            self._write_unicode_string(data, value)
+        else:
+            data.extend(b'\x00\x00')
     
     def _write_unicode_string(self, data: bytearray, text: str):
         """Write Unicode string to data"""
@@ -522,6 +565,7 @@ class PEChecksum:
             with open(file_path, 'wb') as f:
                 f.write(data_array)
             
+            print(f"Checksum fixed: {check_sum.value:08X}")
             return True
             
         except Exception as e:
@@ -539,6 +583,7 @@ class PEChecksum:
                 pe.OPTIONAL_HEADER.DATA_DIRECTORY[4].VirtualAddress = 0
                 pe.OPTIONAL_HEADER.DATA_DIRECTORY[4].Size = 0
                 pe.write(file_path)
+                print("Digital signature removed")
             
             pe.close()
             return True
@@ -548,13 +593,13 @@ class PEChecksum:
             return False
 
 class DialogTranslatorPlugin(TranslatorPlugin):
-    """Dialog 번역 플러그인"""
+    """Dialog 번역 플러그인 - 개선된 버전"""
     
     def __init__(self):
         super().__init__()
         self.name = "Dialog Translator"
-        self.version = "1.0"
-        self.description = "Windows Dialog 리소스 번역"
+        self.version = "2.0"
+        self.description = "Windows Dialog 리소스 번역 (다중 언어 지원)"
         self.resource_type = "RT_DIALOG"
         self.priority = 300
         
@@ -565,6 +610,7 @@ class DialogTranslatorPlugin(TranslatorPlugin):
         self.dialog_data = {}
         self.translations = {}
         self.pe = None
+        self._update_all_languages = True  # 모든 언어 업데이트 옵션
     
     def get_info(self) -> Dict[str, str]:
         return {
@@ -577,7 +623,7 @@ class DialogTranslatorPlugin(TranslatorPlugin):
         }
     
     def analyze(self, file_path: str) -> Dict[str, Any]:
-        """파일 분석"""
+        """파일 분석 - 모든 언어의 Dialog 찾기"""
         try:
             if self.pe:
                 self.pe.close()
@@ -590,6 +636,7 @@ class DialogTranslatorPlugin(TranslatorPlugin):
             total_controls = 0
             english_texts = 0
             has_signature = hasattr(self.pe, 'DIRECTORY_ENTRY_SECURITY')
+            language_ids = set()
             
             # Find RT_DIALOG resources
             if hasattr(self.pe, 'DIRECTORY_ENTRY_RESOURCE'):
@@ -600,6 +647,7 @@ class DialogTranslatorPlugin(TranslatorPlugin):
                             
                             for resource_lang in resource_id.directory.entries:
                                 lang_id = resource_lang.id if hasattr(resource_lang, 'id') else 0
+                                language_ids.add(lang_id)
                                 
                                 # Get dialog data
                                 data = self.pe.get_data(
@@ -627,14 +675,32 @@ class DialogTranslatorPlugin(TranslatorPlugin):
                                         if control.text and self._is_english_text(control.text):
                                             english_texts += 1
             
+            # Language ID 정보 포함
+            lang_info = []
+            for lang_id in sorted(language_ids):
+                if lang_id == LANG_ENGLISH_US:
+                    lang_info.append("English(1033)")
+                elif lang_id == LANG_KOREAN:
+                    lang_info.append("Korean(1042)")
+                elif lang_id == LANG_NEUTRAL:
+                    lang_info.append("Neutral(0)")
+                else:
+                    lang_info.append(f"Lang({lang_id})")
+            
             summary = f"Dialog {dialog_count}개, Control {total_controls}개 (영어 텍스트 {english_texts}개)"
+            if lang_info:
+                summary += f" [언어: {', '.join(lang_info)}]"
             if has_signature:
                 summary += " [디지털 서명 있음]"
+            
+            print(f"분석 완료: {summary}")
+            print(f"찾은 Dialog ID: {sorted(set(did for did, lid in self.dialogs.keys()))}")
             
             return {
                 "count": dialog_count,
                 "items": [{
                     "dialog_id": dialog_id,
+                    "lang_id": lang_id,
                     "title": dialog_info.title if dialog_info.title else "(No Title)",
                     "controls": len(dialog_info.controls)
                 } for (dialog_id, lang_id), dialog_info in self.dialogs.items()],
@@ -649,7 +715,7 @@ class DialogTranslatorPlugin(TranslatorPlugin):
             }
     
     def translate(self, file_path: str, api_key: str, progress_callback=None) -> Dict[str, Any]:
-        """자동 번역 수행 (최적화 버전)"""
+        """자동 번역 수행"""
         try:
             # Collect English texts
             to_translate = []
@@ -675,10 +741,10 @@ class DialogTranslatorPlugin(TranslatorPlugin):
                     "message": "번역할 영어 텍스트가 없습니다"
                 }
             
-            # Translate in larger batches
+            # Translate in batches
             translated_count = 0
             failed_count = 0
-            batch_size = 50  # 배치 크기 증가
+            batch_size = 50
             
             total_batches = (len(to_translate) + batch_size - 1) // batch_size
             
@@ -729,8 +795,224 @@ class DialogTranslatorPlugin(TranslatorPlugin):
                 "message": f"번역 실패: {str(e)}"
             }
     
+    def apply_translations(self, file_path: str, translations: Dict[str, str]) -> Dict[str, Any]:
+        """번역 적용 - 모든 언어 리소스 업데이트"""
+        try:
+            import gc
+            import time
+            
+            print(f"\n=== Dialog 번역 적용 시작 ===")
+            print(f"파일: {file_path}")
+            print(f"번역 항목 수: {len(translations)}")
+            
+            # Merge translations
+            self.translations.update(translations)
+            
+            if not self.translations:
+                return {
+                    "success": False,
+                    "message": "적용할 번역이 없습니다",
+                    "details": {}
+                }
+            
+            # 현재 상태 확인
+            if not self.dialogs:
+                print("Dialog 정보가 없습니다. 재분석 시도...")
+                self.analyze(file_path)
+                
+                if not self.dialogs:
+                    return {
+                        "success": False,
+                        "message": "Dialog 리소스를 찾을 수 없습니다",
+                        "details": {}
+                    }
+            
+            print(f"찾은 Dialog 수: {len(self.dialogs)}")
+            
+            # Close PE if open
+            if self.pe:
+                try:
+                    self.pe.close()
+                except:
+                    pass
+                self.pe = None
+            
+            # Force garbage collection
+            gc.collect()
+            time.sleep(0.5)
+            
+            # Remove digital signature first
+            print("디지털 서명 제거 중...")
+            self.checksum_fixer.remove_signature(file_path)
+            
+            # Begin update
+            print("리소스 업데이트 시작...")
+            h_update = kernel32.BeginUpdateResourceW(file_path, False)
+            if not h_update:
+                error_code = kernel32.GetLastError()
+                raise Exception(f"리소스 업데이트 시작 실패 (오류 코드: {error_code})")
+            
+            success_count = 0
+            failed_count = 0
+            updated_dialogs = []
+            
+            try:
+                # 각 Dialog ID에 대해 모든 언어 버전 업데이트
+                dialog_ids = set(dialog_id for dialog_id, _ in self.dialogs.keys())
+                
+                for dialog_id in dialog_ids:
+                    # 이 Dialog ID의 모든 언어 버전 찾기
+                    dialog_langs = [(did, lid) for did, lid in self.dialogs.keys() if did == dialog_id]
+                    
+                    # 각 언어 버전에 대해
+                    for did, lid in dialog_langs:
+                        dialog_info = self.dialogs.get((did, lid))
+                        if not dialog_info:
+                            continue
+                        
+                        # 번역이 필요한지 확인
+                        needs_update = False
+                        if dialog_info.title and dialog_info.title in self.translations:
+                            needs_update = True
+                        
+                        if not needs_update:
+                            for control in dialog_info.controls:
+                                if control.text and control.text in self.translations:
+                                    needs_update = True
+                                    break
+                        
+                        if needs_update:
+                            print(f"Dialog {did} (언어 {lid}) 업데이트 중...")
+                            
+                            # Dialog 재구성
+                            new_data = self.rebuilder.rebuild_dialog_with_translations(dialog_info, self.translations)
+                            
+                            # 리소스 업데이트
+                            data_buffer = ctypes.create_string_buffer(new_data)
+                            
+                            if kernel32.UpdateResourceW(
+                                h_update,
+                                MAKEINTRESOURCE(RT_DIALOG),
+                                MAKEINTRESOURCE(did),
+                                lid,
+                                data_buffer,
+                                len(new_data)
+                            ):
+                                success_count += 1
+                                updated_dialogs.append(f"ID:{did}/Lang:{lid}")
+                                print(f"  - 성공")
+                            else:
+                                failed_count += 1
+                                error_code = kernel32.GetLastError()
+                                print(f"  - 실패 (오류: {error_code})")
+                        
+                        # 추가로 한국어 리소스 생성 (없는 경우)
+                        if self._update_all_languages and lid != LANG_KOREAN and needs_update:
+                            korean_exists = (did, LANG_KOREAN) in self.dialogs
+                            if not korean_exists:
+                                print(f"Dialog {did}에 한국어(1042) 리소스 추가...")
+                                
+                                new_data = self.rebuilder.rebuild_dialog_with_translations(dialog_info, self.translations)
+                                data_buffer = ctypes.create_string_buffer(new_data)
+                                
+                                if kernel32.UpdateResourceW(
+                                    h_update,
+                                    MAKEINTRESOURCE(RT_DIALOG),
+                                    MAKEINTRESOURCE(did),
+                                    LANG_KOREAN,
+                                    data_buffer,
+                                    len(new_data)
+                                ):
+                                    success_count += 1
+                                    updated_dialogs.append(f"ID:{did}/Lang:{LANG_KOREAN}[NEW]")
+                                    print(f"  - 한국어 리소스 추가 성공")
+                
+                # 변경사항 커밋
+                print("\n변경사항 커밋 중...")
+                if not kernel32.EndUpdateResourceW(h_update, False):
+                    error_code = kernel32.GetLastError()
+                    raise Exception(f"리소스 업데이트 커밋 실패 (오류 코드: {error_code})")
+                
+                print("리소스 업데이트 완료")
+                
+            except Exception as e:
+                # 오류 발생 시 업데이트 취소
+                kernel32.EndUpdateResourceW(h_update, True)
+                raise e
+            
+            # Fix PE checksum
+            print("PE 체크섬 수정 중...")
+            self.checksum_fixer.fix_checksum(file_path)
+            
+            result_message = f"{success_count}개 Dialog 업데이트 완료"
+            if updated_dialogs:
+                result_message += f"\n업데이트된 Dialog: {', '.join(updated_dialogs[:10])}"
+                if len(updated_dialogs) > 10:
+                    result_message += f" 외 {len(updated_dialogs)-10}개"
+            
+            print(f"\n=== 완료: {result_message} ===")
+            
+            return {
+                "success": True,
+                "message": result_message,
+                "details": {
+                    "updated": success_count,
+                    "failed": failed_count,
+                    "checksum_fixed": True,
+                    "signature_removed": True,
+                    "updated_dialogs": updated_dialogs
+                }
+            }
+            
+        except Exception as e:
+            print(f"적용 실패: {str(e)}")
+            return {
+                "success": False,
+                "message": f"적용 실패: {str(e)}",
+                "details": {}
+            }
+    
+    def get_translations(self) -> Dict[str, str]:
+        """현재 번역 데이터 반환"""
+        return self.translations.copy()
+    
+    def set_translations(self, translations: Dict[str, str]):
+        """번역 데이터 설정"""
+        self.translations = translations.copy()
+    
+    def cleanup(self):
+        """정리 작업"""
+        if self.pe:
+            try:
+                self.pe.close()
+            except:
+                pass
+            self.pe = None
+        self.dialogs.clear()
+        self.dialog_data.clear()
+    
+    def _is_english_text(self, text):
+        """영어 텍스트인지 확인"""
+        if not text or len(text.strip()) == 0:
+            return False
+        
+        if text.startswith("ResID_"):
+            return False
+        
+        if text.strip().isdigit():
+            return False
+        
+        ascii_count = sum(1 for c in text if ord(c) < 128)
+        korean_count = sum(1 for c in text if '\uac00' <= c <= '\ud7a3')
+        
+        if korean_count > 0:
+            return False
+        
+        has_alpha = any(c.isalpha() for c in text)
+        return ascii_count / len(text) > 0.8 and has_alpha
+    
     def _call_translation_api_optimized(self, texts: List[str], api_key: str) -> Dict[str, str]:
-        """최적화된 ChatGPT API 호출 (캐시 지원)"""
+        """최적화된 ChatGPT API 호출"""
         # 캐시 확인
         if CACHE_ENABLED:
             cache = get_translation_cache()
@@ -826,214 +1108,3 @@ class DialogTranslatorPlugin(TranslatorPlugin):
                 final_translations[text] = text
         
         return final_translations
-    
-    def apply_translations(self, file_path: str, translations: Dict[str, str]) -> Dict[str, Any]:
-        """번역 적용"""
-        try:
-            import gc
-            import time
-            
-            # Merge translations
-            self.translations.update(translations)
-            
-            if not self.translations:
-                return {
-                    "success": False,
-                    "message": "적용할 번역이 없습니다",
-                    "details": {}
-                }
-            
-            # Close PE if open
-            if self.pe:
-                try:
-                    self.pe.close()
-                except:
-                    pass
-                self.pe = None
-            
-            # Force garbage collection
-            gc.collect()
-            time.sleep(0.2)  # 파일 핸들 해제 대기
-            
-            # Remove digital signature first
-            self.checksum_fixer.remove_signature(file_path)
-            
-            # Begin update
-            h_update = kernel32.BeginUpdateResourceW(file_path, False)
-            if not h_update:
-                error_code = kernel32.GetLastError()
-                raise Exception(f"리소스 업데이트 시작 실패 (오류 코드: {error_code})")
-            
-            success_count = 0
-            failed_count = 0
-            
-            try:
-                # Apply each dialog
-                for (dialog_id, lang_id), dialog_info in self.dialogs.items():
-                    # Check if needs update
-                    needs_update = False
-                    
-                    if dialog_info.title and dialog_info.title in self.translations:
-                        needs_update = True
-                    
-                    if not needs_update:
-                        for control in dialog_info.controls:
-                            if control.text and control.text in self.translations:
-                                needs_update = True
-                                break
-                    
-                    if needs_update:
-                        # Rebuild dialog completely
-                        new_data = self.rebuilder.rebuild_dialog_complete(dialog_info, self.translations)
-                        
-                        # Update resource
-                        data_buffer = ctypes.create_string_buffer(new_data)
-                        
-                        if kernel32.UpdateResourceW(
-                            h_update,
-                            MAKEINTRESOURCE(RT_DIALOG),
-                            MAKEINTRESOURCE(dialog_id),
-                            lang_id,
-                            data_buffer,
-                            len(new_data)
-                        ):
-                            success_count += 1
-                        else:
-                            failed_count += 1
-                            error_code = kernel32.GetLastError()
-                            print(f"Dialog {dialog_id} update failed: error {error_code}")
-                
-                # Commit
-                if not kernel32.EndUpdateResourceW(h_update, False):
-                    error_code = kernel32.GetLastError()
-                    raise Exception(f"리소스 업데이트 커밋 실패 (오류 코드: {error_code})")
-                
-            except Exception as e:
-                # 오류 발생 시 업데이트 취소
-                kernel32.EndUpdateResourceW(h_update, True)
-                raise e
-            
-            # Fix PE checksum
-            self.checksum_fixer.fix_checksum(file_path)
-            
-            return {
-                "success": True,
-                "message": f"{success_count}개 Dialog 업데이트 완료",
-                "details": {
-                    "updated": success_count,
-                    "failed": failed_count,
-                    "checksum_fixed": True,
-                    "signature_removed": True
-                }
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"적용 실패: {str(e)}",
-                "details": {}
-            }
-    
-    def get_translations(self) -> Dict[str, str]:
-        """현재 번역 데이터 반환"""
-        return self.translations.copy()
-    
-    def set_translations(self, translations: Dict[str, str]):
-        """번역 데이터 설정"""
-        self.translations = translations.copy()
-    
-    def cleanup(self):
-        """정리 작업"""
-        if self.pe:
-            try:
-                self.pe.close()
-            except:
-                pass
-            self.pe = None
-        # 다이얼로그 데이터 정리
-        self.dialogs.clear()
-        self.dialog_data.clear()
-        # 번역 데이터는 유지 (필요시 재사용)
-    
-    def _is_english_text(self, text):
-        """영어 텍스트인지 확인"""
-        if not text or len(text.strip()) == 0:
-            return False
-        
-        if text.startswith("ResID_"):
-            return False
-        
-        if text.strip().isdigit():
-            return False
-        
-        ascii_count = sum(1 for c in text if ord(c) < 128)
-        korean_count = sum(1 for c in text if '\uac00' <= c <= '\ud7a3')
-        
-        if korean_count > 0:
-            return False
-        
-        has_alpha = any(c.isalpha() for c in text)
-        return ascii_count / len(text) > 0.8 and has_alpha
-    
-    def _call_translation_api(self, texts: List[str], api_key: str) -> Dict[str, str]:
-        """ChatGPT API 호출"""
-        translations = {}
-        
-        try:
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            prompt = "다음 Windows Dialog의 텍스트를 한국어로 번역해주세요.\n"
-            prompt += "버튼, 라벨, 타이틀 등 UI 텍스트입니다.\n"
-            prompt += "간결하고 명확한 한국어로 번역해주세요.\n\n"
-            
-            for i, text in enumerate(texts, 1):
-                prompt += f"text{i}: {text}\n"
-            
-            prompt += "\nJSON 형식으로 응답: {\"text1\": \"번역1\", ...}"
-            
-            data = {
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "Windows 프로그램 UI 번역 전문가입니다."
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.3,
-                "max_tokens": 2000
-            }
-            
-            response = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                content = result['choices'][0]['message']['content']
-                
-                # Parse JSON
-                import re
-                json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
-                if json_match:
-                    parsed = json.loads(json_match.group())
-                    
-                    for i, text in enumerate(texts, 1):
-                        key = f"text{i}"
-                        if key in parsed:
-                            translations[text] = parsed[key]
-                        else:
-                            translations[text] = text
-            
-        except Exception as e:
-            print(f"API error: {e}")
-            for text in texts:
-                translations[text] = text
-        
-        return translations
